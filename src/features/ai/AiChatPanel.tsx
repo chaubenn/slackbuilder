@@ -20,6 +20,7 @@ import { applyEdits } from "../../lib/ai/applyEdits";
 import { tipTapToMrkdwn } from "../../lib/slack/tipTapToMrkdwn";
 import { tipTapToBlocks } from "../../lib/slack/tipTapToBlocks";
 import { PendingEditCard } from "./PendingEditCard";
+import { isApplyCommand } from "./applyCommand";
 import { cn } from "../../lib/utils";
 
 interface AiChatPanelProps {
@@ -121,6 +122,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       return;
     }
 
+    const priorChat = chat;
     const controller = new AbortController();
     startStream(controller, userMessage);
 
@@ -129,10 +131,22 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     const blocks = tipTapToBlocks(document);
     const contextMsg = buildContextMessage({ mrkdwn, blocks });
 
+    const historyMessages = priorChat
+      .filter(
+        (msg) =>
+          (msg.role === "user" || msg.role === "assistant") &&
+          msg.content.trim().length > 0,
+      )
+      .map((msg) => ({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      }));
+
     const apiMessages = [
       { role: "system" as const, content: SLACK_SYSTEM_PROMPT },
-      { role: "user" as const, content: contextMsg },
-      { role: "user" as const, content: `USER REQUEST:\n${userMessage}` },
+      ...historyMessages,
+      { role: "system" as const, content: contextMsg },
+      { role: "user" as const, content: userMessage },
     ];
 
     try {
@@ -342,6 +356,3 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   );
 }
 
-function isApplyCommand(input: string): boolean {
-  return /^(go|apply|accept|accept all|apply all|do it)$/i.test(input.trim());
-}

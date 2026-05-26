@@ -19,7 +19,7 @@ export function parseAiResponse(raw: string): AiEditResponse {
   const block = extractJsonBlock(raw);
   if (!block) {
     return {
-      assistantMessage: raw.trim() || "(no response)",
+      assistantMessage: humanizeFallback(raw) || "(no response)",
       edits: [],
     };
   }
@@ -30,26 +30,91 @@ export function parseAiResponse(raw: string): AiEditResponse {
   } catch {
     return {
       assistantMessage:
-        stripJsonBlock(raw).trim() ||
+        humanizeFallback(stripJsonBlock(raw)) ||
         "(could not parse structured response)",
       edits: [],
     };
   }
 
-  const edits: StructuredEdit[] = (parsed.edits ?? [])
+  const rawEdits = Array.isArray(parsed.edits) ? parsed.edits : [];
+
+  // Determine the full-rewrite content: prefer explicit optionalFullRewrite,
+  // otherwise promote the content of any rewrite_section edit that has no
+  // usable target.
+  let fullRewrite =
+    typeof parsed.optionalFullRewrite === "string" &&
+    parsed.optionalFullRewrite.trim().length > 0
+      ? parsed.optionalFullRewrite
+      : undefined;
+  if (fullRewrite === undefined) {
+    for (const e of rawEdits) {
+      if (
+        e &&
+        e.type === "rewrite_section" &&
+        typeof e.content === "string" &&
+        e.content.trim().length > 0 &&
+        !isUsableTarget(e.target)
+      ) {
+        fullRewrite = e.content;
+        break;
+      }
+    }
+  }
+
+  const edits: StructuredEdit[] = rawEdits
     .map((e) => normalizeEdit(e))
     .filter((e): e is StructuredEdit => e !== null);
 
+  // If the model only supplied a full rewrite (no edits with usable targets),
+  // synthesise a single full-rewrite pending edit so the UI can offer Accept.
+  if (edits.length === 0 && fullRewrite !== undefined) {
+    edits.push({
+      id: `edit-${nanoid(6)}`,
+      type: "rewrite_section",
+      target: { start: 0, end: 0 },
+      content: fullRewrite,
+      rationale: "Replace the entire message with the proposed rewrite.",
+    });
+  }
+
   const assistantMessage =
     parsed.assistantMessage?.trim() ||
-    stripJsonBlock(raw).trim() ||
+    humanizeFallback(stripJsonBlock(raw)) ||
     `Proposed ${edits.length} edit${edits.length === 1 ? "" : "s"}.`;
 
   return {
     assistantMessage,
     edits,
-    optionalFullRewrite: parsed.optionalFullRewrite,
+    optionalFullRewrite: fullRewrite,
   };
+}
+
+function isUsableTarget(target: unknown): boolean {
+  if (typeof target === "string") return /^(text|image|link)-/.test(target);
+  if (target && typeof target === "object") {
+    const t = target as { start?: unknown; end?: unknown };
+    return typeof t.start === "number" && typeof t.end === "number";
+  }
+  return false;
+}
+
+// When the model returns raw text instead of JSON, it sometimes embeds literal
+// "\n" / "\t" / "\\" / "\"" two-character sequences. If the text contains no
+// real newlines but does contain those escape patterns, treat it as if it were
+// a JSON string body and unescape it for display.
+function humanizeFallback(raw: string): string {
+  const text = raw.trim();
+  if (!text) return "";
+  const hasRealNewline = text.includes("\n");
+  const hasEscapedNewline = /\\n/.test(text);
+  if (hasRealNewline || !hasEscapedNewline) return text;
+  return text
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, "\\")
+    .trim();
 }
 
 function normalizeEdit(e: RawEdit): StructuredEdit | null {
@@ -66,6 +131,7 @@ function normalizeEdit(e: RawEdit): StructuredEdit | null {
 
   let target: StructuredEdit["target"];
   if (typeof e.target === "string") {
+    if (!/^(text|image|link)-/.test(e.target)) return null;
     target = e.target;
   } else if (
     e.target &&
@@ -88,23 +154,52 @@ function normalizeEdit(e: RawEdit): StructuredEdit | null {
   };
 }
 
+// Find a balanced JSON object in `text`, ignoring unrelated text and any
+// triple-backtick fences. Walks the JSON tracking string state and escape
+// characters so triple-backticks inside string values do not confuse us.
 function extractJsonBlock(text: string): string | null {
-  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
-  if (fenced) return fenced[1].trim();
+  const fenceMatch = /```json\s*/i.exec(text);
+  const searchFrom =
+    fenceMatch && fenceMatch.index !== undefined
+      ? fenceMatch.index + fenceMatch[0].length
+      : 0;
 
-  const anyFenced = text.match(/```\s*([\s\S]*?)```/);
-  if (anyFenced) {
-    const candidate = anyFenced[1].trim();
-    if (candidate.startsWith("{")) return candidate;
-  }
-
-  const start = text.indexOf("{");
+  const start = text.indexOf("{", searchFrom);
   if (start === -1) return null;
-  const end = text.lastIndexOf("}");
-  if (end <= start) return null;
-  return text.slice(start, end + 1);
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 function stripJsonBlock(text: string): string {
-  return text.replace(/```json\s*[\s\S]*?```/gi, "").replace(/```[\s\S]*?```/g, "");
+  const block = extractJsonBlock(text);
+  let stripped = text;
+  if (block) stripped = stripped.replace(block, "");
+  return stripped.replace(/```json/gi, "").replace(/```/g, "").trim();
 }
