@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, StopCircle, Undo2, Sparkles, Settings } from "lucide-react";
+import { Send, StopCircle, Undo2, Redo2, Sparkles, Settings } from "lucide-react";
 import { useAppStore, filterSelectedEdits } from "../../store/appStore";
 import { buildProvider } from "../../lib/ai/providers/openai";
 import {
@@ -36,7 +36,9 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   const cancelStream = useAppStore((s) => s.cancelStream);
   const addChatMessages = useAppStore((s) => s.addChatMessages);
   const history = useAppStore((s) => s.history);
+  const redoStack = useAppStore((s) => s.redoStack);
   const revertLastAiChange = useAppStore((s) => s.revertLastAiChange);
+  const redoLastAiChange = useAppStore((s) => s.redoLastAiChange);
   const pendingResponse = useAppStore((s) => s.pendingResponse);
   const selected = useAppStore((s) => s.pendingSelectedEditIds);
   const acceptEdits = useAppStore((s) => s.acceptEdits);
@@ -124,7 +126,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   };
 
   return (
-    <div className="flex h-full flex-col border-l border-slate-200 bg-slate-50">
+    <div className="flex h-full flex-col bg-slate-50">
       <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
         <Sparkles size={14} className="text-emerald-600" />
         <h2 className="text-sm font-semibold text-slate-800">AI Assistant</h2>
@@ -140,6 +142,18 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
             )}
           >
             <Undo2 size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={redoLastAiChange}
+            disabled={redoStack.length === 0}
+            title="Redo last reverted AI edit"
+            className={cn(
+              "rounded p-1 text-slate-500 hover:bg-slate-100",
+              redoStack.length === 0 && "cursor-not-allowed opacity-40",
+            )}
+          >
+            <Redo2 size={14} />
           </button>
           <button
             type="button"

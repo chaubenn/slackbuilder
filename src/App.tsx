@@ -7,11 +7,14 @@ import { SettingsModal } from "./features/settings/SettingsModal";
 import { useAppStore } from "./store/appStore";
 import { hydrateStore, useAutosave } from "./store/persistence";
 import { copyMessageToSlack } from "./features/copy/copyToSlack";
+import { ResizableSplitPane } from "./components/ResizableSplitPane";
 
 function App() {
   const document = useAppStore((s) => s.document);
   const setDocument = useAppStore((s) => s.setDocument);
   const hydrated = useAppStore((s) => s.hydrated);
+  const aiPanelWidth = useAppStore((s) => s.ui.aiPanelWidth);
+  const setAiPanelWidth = useAppStore((s) => s.setAiPanelWidth);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -84,23 +87,27 @@ function App() {
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <main className="flex min-h-0 flex-1 flex-col bg-white">
-          <EditorToolbar
-            editor={editor}
-            onCopy={handleCopy}
-            isCopying={copying}
-          />
-          <SlackEditor
-            document={document}
-            onChange={setDocument}
-            onReady={setEditor}
-          />
-        </main>
-        <aside className="w-[380px] min-w-[320px] max-w-[480px] flex-shrink-0">
+      <ResizableSplitPane
+        widthPx={aiPanelWidth}
+        onWidthChange={setAiPanelWidth}
+        primary={
+          <main className="flex min-h-0 flex-1 flex-col bg-white">
+            <EditorToolbar
+              editor={editor}
+              onCopy={handleCopy}
+              isCopying={copying}
+            />
+            <SlackEditor
+              document={document}
+              onChange={setDocument}
+              onReady={setEditor}
+            />
+          </main>
+        }
+        secondary={
           <AiChatPanel onOpenSettings={() => setSettingsOpen(true)} />
-        </aside>
-      </div>
+        }
+      />
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>

@@ -3,6 +3,10 @@
 
 import { useEffect } from "react";
 import { useAppStore } from "./appStore";
+import {
+  AI_PANEL_DEFAULT_WIDTH,
+  clampAiPanelWidth,
+} from "../hooks/useResizablePanel";
 
 const KEY = "slackbuilder-state-v1";
 
@@ -30,6 +34,7 @@ interface Snapshot {
   chat: unknown;
   settings: unknown;
   history: unknown;
+  ui?: { aiPanelWidth?: number };
 }
 
 export async function loadSnapshot(): Promise<Snapshot | null> {
@@ -70,6 +75,7 @@ export function useAutosave(delayMs = 1500) {
           chat: state.chat,
           settings: state.settings,
           history: state.history,
+          ui: state.ui,
         }).catch(() => undefined);
       }, delayMs);
     });
@@ -86,10 +92,17 @@ export async function hydrateStore(): Promise<void> {
     useAppStore.getState().hydrate({});
     return;
   }
+  const savedWidth = snapshot.ui?.aiPanelWidth;
+  const aiPanelWidth =
+    typeof savedWidth === "number" && Number.isFinite(savedWidth)
+      ? clampAiPanelWidth(savedWidth)
+      : AI_PANEL_DEFAULT_WIDTH;
+
   useAppStore.getState().hydrate({
     document: (snapshot.document as never) ?? undefined,
     chat: (snapshot.chat as never) ?? [],
     settings: (snapshot.settings as never) ?? undefined,
     history: (snapshot.history as never) ?? [],
+    ui: { aiPanelWidth },
   });
 }

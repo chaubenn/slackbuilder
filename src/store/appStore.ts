@@ -11,6 +11,11 @@ import type {
   ChatMessage,
 } from "../lib/ai/types";
 import { PROVIDERS } from "../lib/ai/types";
+import { AI_PANEL_DEFAULT_WIDTH } from "../hooks/useResizablePanel";
+
+export interface AppUiState {
+  aiPanelWidth: number;
+}
 
 export interface AiHistoryEntry {
   id: string;
@@ -29,9 +34,12 @@ export interface AppState {
   abortController: AbortController | null;
   settings: AiProviderSettings;
   history: AiHistoryEntry[];
+  redoStack: AiHistoryEntry[];
+  ui: AppUiState;
   hydrated: boolean;
 
   setDocument: (doc: JSONContent) => void;
+  setAiPanelWidth: (width: number) => void;
   setSettings: (s: Partial<AiProviderSettings>) => void;
   setProvider: (p: AiProviderId) => void;
   addChatMessages: (
@@ -47,6 +55,7 @@ export interface AppState {
   rejectEdits: () => void;
   pushHistory: (entry: AiHistoryEntry) => void;
   revertLastAiChange: () => void;
+  redoLastAiChange: () => void;
   resetMessage: () => void;
   hydrate: (snapshot: Partial<AppState>) => void;
 }
@@ -72,9 +81,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   abortController: null,
   settings: DEFAULT_SETTINGS,
   history: [],
+  redoStack: [],
+  ui: { aiPanelWidth: AI_PANEL_DEFAULT_WIDTH },
   hydrated: false,
 
   setDocument: (doc) => set({ document: doc }),
+
+  setAiPanelWidth: (width) =>
+    set((state) => ({
+      ui: { ...state.ui, aiPanelWidth: width },
+    })),
 
   setSettings: (s) =>
     set((state) => ({
@@ -204,6 +220,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ],
       pendingResponse: null,
       pendingSelectedEditIds: {},
+      redoStack: [],
     })),
 
   rejectEdits: () =>
@@ -219,6 +236,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       return {
         document: last.before,
         history: state.history.slice(0, -1),
+        redoStack: [...state.redoStack, last],
+      };
+    }),
+
+  redoLastAiChange: () =>
+    set((state) => {
+      if (state.redoStack.length === 0) return state;
+      const last = state.redoStack[state.redoStack.length - 1];
+      return {
+        document: last.after,
+        history: [...state.history, last],
+        redoStack: state.redoStack.slice(0, -1),
       };
     }),
 
@@ -229,12 +258,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       pendingResponse: null,
       pendingSelectedEditIds: {},
       history: [],
+      redoStack: [],
     }),
 
   hydrate: (snapshot) =>
     set((state) => ({
       ...state,
       ...snapshot,
+      redoStack: [],
       hydrated: true,
       isStreaming: false,
       abortController: null,
