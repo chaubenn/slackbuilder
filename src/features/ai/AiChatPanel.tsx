@@ -122,13 +122,19 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       return;
     }
 
+    const { activeProjectId: projectId, projects } = useAppStore.getState();
+    const project = projects.find((item) => item.id === projectId);
+    const conversationId = project?.activeConversationId;
+    if (!conversationId) return;
+
     const priorChat = chat;
+    const documentAtSend = document;
     const controller = new AbortController();
-    startStream(controller, userMessage);
+    startStream(projectId, conversationId, controller, userMessage);
 
     const provider = buildProvider(settings);
-    const mrkdwn = tipTapToMrkdwn(document);
-    const blocks = tipTapToBlocks(document);
+    const mrkdwn = tipTapToMrkdwn(documentAtSend);
+    const blocks = tipTapToBlocks(documentAtSend);
     const contextMsg = buildContextMessage({ mrkdwn, blocks });
 
     const historyMessages = priorChat
@@ -154,15 +160,15 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
         signal: controller.signal,
       });
       const parsed = parseAiResponse(full);
-      finishStream(parsed);
+      finishStream(projectId, conversationId, parsed);
     } catch (err) {
       if (controller.signal.aborted) {
-        finishStream({
+        finishStream(projectId, conversationId, {
           assistantMessage: "(cancelled)",
           edits: [],
         });
       } else {
-        finishStream({
+        finishStream(projectId, conversationId, {
           assistantMessage: `Error: ${(err as Error).message}`,
           edits: [],
         });

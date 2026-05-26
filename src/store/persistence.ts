@@ -116,6 +116,7 @@ export function snapshotToHydration(
     pendingSelectedEditIds: {},
     history: (v1Snapshot.history as AiHistoryEntry[] | undefined) ?? [],
     redoStack: [],
+    isStreaming: false,
     createdAt: now,
     updatedAt: now,
   };

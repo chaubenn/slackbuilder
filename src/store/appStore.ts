@@ -12,6 +12,12 @@ import type {
 } from "../lib/ai/types";
 import { PROVIDERS } from "../lib/ai/types";
 import { AI_PANEL_DEFAULT_WIDTH } from "../hooks/useResizablePanel";
+import {
+  abortAllStreams,
+  abortStream,
+  clearStream,
+  registerStream,
+} from "./streamControllers";
 
 export interface AppUiState {
   aiPanelWidth: number;
@@ -34,6 +40,7 @@ export interface Conversation {
   pendingSelectedEditIds: Record<string, boolean>;
   history: AiHistoryEntry[];
   redoStack: AiHistoryEntry[];
+  isStreaming: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -55,7 +62,6 @@ export interface AppState {
   pendingResponse: AiEditResponse | null;
   pendingSelectedEditIds: Record<string, boolean>;
   isStreaming: boolean;
-  abortController: AbortController | null;
   settings: AiProviderSettings;
   history: AiHistoryEntry[];
   redoStack: AiHistoryEntry[];
@@ -77,9 +83,18 @@ export interface AppState {
   renameConversation: (conversationId: string, title: string) => void;
   reorderConversations: (orderedIds: string[]) => void;
   clearChat: () => void;
-  startStream: (controller: AbortController, userMessage: string) => void;
+  startStream: (
+    projectId: string,
+    conversationId: string,
+    controller: AbortController,
+    userMessage: string,
+  ) => void;
   appendAssistantToken: (token: string) => void;
-  finishStream: (response: AiEditResponse) => void;
+  finishStream: (
+    projectId: string,
+    conversationId: string,
+    response: AiEditResponse,
+  ) => void;
   cancelStream: () => void;
   toggleEditSelected: (id: string) => void;
   setAllEditsSelected: (selected: boolean) => void;
@@ -114,6 +129,7 @@ type ActiveConversationPatch = Partial<
     | "pendingSelectedEditIds"
     | "history"
     | "redoStack"
+    | "isStreaming"
   >
 >;
 
@@ -135,6 +151,7 @@ function createConversation(
     pendingSelectedEditIds: {},
     history: [],
     redoStack: [],
+    isStreaming: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -162,6 +179,90 @@ function activeFieldsFromConversation(conversation: Conversation) {
     pendingSelectedEditIds: conversation.pendingSelectedEditIds,
     history: conversation.history,
     redoStack: conversation.redoStack,
+    isStreaming: conversation.isStreaming,
+  };
+}
+
+function syncActiveConversation(projects: Project[], state: AppState): Project[] {
+  const project = getActiveProject(projects, state.activeProjectId);
+  const conversation = getActiveConversation(project);
+  if (!project || !conversation) return projects;
+
+  const patched: Conversation = {
+    ...conversation,
+    document: state.document,
+    chat: state.chat,
+    pendingResponse: state.pendingResponse,
+    pendingSelectedEditIds: state.pendingSelectedEditIds,
+    history: state.history,
+    redoStack: state.redoStack,
+    isStreaming: conversation.isStreaming,
+    updatedAt: Date.now(),
+  };
+
+  const updatedProject: Project = {
+    ...project,
+    conversations: project.conversations.map((item) =>
+      item.id === patched.id ? patched : item,
+    ),
+    updatedAt: Date.now(),
+  };
+
+  return projects.map((item) =>
+    item.id === updatedProject.id ? updatedProject : item,
+  );
+}
+
+function updateConversationById(
+  state: AppState,
+  projectId: string,
+  conversationId: string,
+  patch: ActiveConversationPatch,
+): Partial<
+  Pick<
+    AppState,
+    | "projects"
+    | "document"
+    | "chat"
+    | "pendingResponse"
+    | "pendingSelectedEditIds"
+    | "history"
+    | "redoStack"
+    | "isStreaming"
+  >
+> {
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project) return { projects: state.projects };
+
+  const conversation = project.conversations.find(
+    (item) => item.id === conversationId,
+  );
+  if (!conversation) return { projects: state.projects };
+
+  const now = Date.now();
+  const updatedConversation: Conversation = {
+    ...conversation,
+    ...patch,
+    updatedAt: now,
+  };
+  const updatedProject: Project = {
+    ...project,
+    conversations: project.conversations.map((item) =>
+      item.id === conversationId ? updatedConversation : item,
+    ),
+    updatedAt: now,
+  };
+  const projects = state.projects.map((item) =>
+    item.id === projectId ? updatedProject : item,
+  );
+
+  const isActive =
+    state.activeProjectId === projectId &&
+    updatedProject.activeConversationId === conversationId;
+
+  return {
+    projects,
+    ...(isActive ? activeFieldsFromConversation(updatedConversation) : {}),
   };
 }
 
@@ -216,41 +317,21 @@ function ensureProjectTree(state: AppState): {
 function updateActiveConversation(
   state: AppState,
   patch: ActiveConversationPatch,
-): Pick<
-  AppState,
-  | "projects"
-  | "activeProjectId"
-  | "document"
-  | "chat"
-  | "pendingResponse"
-  | "pendingSelectedEditIds"
-  | "history"
-  | "redoStack"
+): Partial<
+  Pick<
+    AppState,
+    | "projects"
+    | "document"
+    | "chat"
+    | "pendingResponse"
+    | "pendingSelectedEditIds"
+    | "history"
+    | "redoStack"
+    | "isStreaming"
+  >
 > {
-  const { projects, activeProjectId, project, conversation } =
-    ensureProjectTree(state);
-  const now = Date.now();
-  const updatedConversation = {
-    ...conversation,
-    ...patch,
-    updatedAt: now,
-  };
-  const updatedProject = {
-    ...project,
-    activeConversationId: updatedConversation.id,
-    conversations: project.conversations.map((item) =>
-      item.id === updatedConversation.id ? updatedConversation : item,
-    ),
-    updatedAt: now,
-  };
-
-  return {
-    projects: projects.map((item) =>
-      item.id === updatedProject.id ? updatedProject : item,
-    ),
-    activeProjectId,
-    ...activeFieldsFromConversation(updatedConversation),
-  };
+  const { activeProjectId, conversation } = ensureProjectTree(state);
+  return updateConversationById(state, activeProjectId, conversation.id, patch);
 }
 
 function normalizeProjects(
@@ -285,10 +366,23 @@ function normalizeProjects(
     return {
       ...project,
       name: project.name || `Project ${projectIndex + 1}`,
-      conversations,
+      conversations: conversations.map((item) => ({
+        ...item,
+        isStreaming: item.isStreaming ?? false,
+      })),
       activeConversationId: activeConversation.id,
     };
   });
+}
+
+function clearStreamingFlags(projects: Project[]): Project[] {
+  return projects.map((project) => ({
+    ...project,
+    conversations: project.conversations.map((conversation) => ({
+      ...conversation,
+      isStreaming: false,
+    })),
+  }));
 }
 
 function titleFromMessage(message: string): string {
@@ -317,7 +411,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingResponse: null,
   pendingSelectedEditIds: {},
   isStreaming: false,
-  abortController: null,
   settings: DEFAULT_SETTINGS,
   history: [],
   redoStack: [],
@@ -366,45 +459,42 @@ export const useAppStore = create<AppState>((set, get) => ({
     ),
 
   createProject: (name) => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
     set((state) => {
-      const projectName = name?.trim() || `Project ${state.projects.length + 1}`;
+      const syncedProjects = syncActiveConversation(state.projects, state);
+      const syncedState = { ...state, projects: syncedProjects };
+      const projectName =
+        name?.trim() || `Project ${syncedState.projects.length + 1}`;
       const conversation = createConversation("Untitled 1");
       const project = createProject(projectName, conversation);
       return {
-        projects: [...state.projects, project],
+        projects: [...syncedState.projects, project],
         activeProjectId: project.id,
         ...activeFieldsFromConversation(conversation),
-        isStreaming: false,
-        abortController: null,
       };
     });
   },
 
   switchProject: (projectId) => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
     set((state) => {
-      const project = state.projects.find((item) => item.id === projectId);
+      const syncedProjects = syncActiveConversation(state.projects, state);
+      const syncedState = { ...state, projects: syncedProjects };
+      const project = syncedState.projects.find((item) => item.id === projectId);
       const conversation = getActiveConversation(project);
-      if (!project || !conversation) {
-        return { isStreaming: false, abortController: null };
-      }
+      if (!project || !conversation) return {};
       return {
+        projects: syncedState.projects,
         activeProjectId: project.id,
         ...activeFieldsFromConversation(conversation),
-        isStreaming: false,
-        abortController: null,
       };
     });
   },
 
   createConversation: (title) => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
     set((state) => {
-      const { projects, activeProjectId, project } = ensureProjectTree(state);
+      const syncedProjects = syncActiveConversation(state.projects, state);
+      const syncedState = { ...state, projects: syncedProjects };
+      const { projects, activeProjectId, project } =
+        ensureProjectTree(syncedState);
       const conversationTitle =
         title?.trim() || `Untitled ${project.conversations.length + 1}`;
       const conversation = createConversation(conversationTitle);
@@ -420,21 +510,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
         activeProjectId,
         ...activeFieldsFromConversation(conversation),
-        isStreaming: false,
-        abortController: null,
       };
     });
   },
 
   switchConversation: (conversationId) => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
     set((state) => {
-      const { projects, activeProjectId, project } = ensureProjectTree(state);
+      const syncedProjects = syncActiveConversation(state.projects, state);
+      const syncedState = { ...state, projects: syncedProjects };
+      const { projects, activeProjectId, project } =
+        ensureProjectTree(syncedState);
       const conversation = project.conversations.find(
         (item) => item.id === conversationId,
       );
-      if (!conversation) return { isStreaming: false, abortController: null };
+      if (!conversation) return { projects: syncedProjects };
       const updatedProject = {
         ...project,
         activeConversationId: conversation.id,
@@ -446,23 +535,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
         activeProjectId,
         ...activeFieldsFromConversation(conversation),
-        isStreaming: false,
-        abortController: null,
       };
     });
   },
 
   deleteConversation: (conversationId) => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
     set((state) => {
-      const { projects, activeProjectId, project } = ensureProjectTree(state);
+      const syncedProjects = syncActiveConversation(state.projects, state);
+      const syncedState = { ...state, projects: syncedProjects };
+      const { projects, activeProjectId, project } =
+        ensureProjectTree(syncedState);
+      abortStream(activeProjectId, conversationId);
       const deleteIndex = project.conversations.findIndex(
         (item) => item.id === conversationId,
       );
-      if (deleteIndex === -1) {
-        return { isStreaming: false, abortController: null };
-      }
+      if (deleteIndex === -1) return { projects: syncedProjects };
 
       const remaining = project.conversations.filter(
         (item) => item.id !== conversationId,
@@ -487,8 +574,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
         activeProjectId,
         ...activeFieldsFromConversation(nextActiveConversation),
-        isStreaming: false,
-        abortController: null,
       };
     });
   },
@@ -566,39 +651,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   clearChat: () => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
-    set((state) => ({
-      ...updateActiveConversation(state, {
+    set((state) => {
+      const { activeProjectId, conversation } = ensureProjectTree(state);
+      abortStream(activeProjectId, conversation.id);
+      return updateConversationById(state, activeProjectId, conversation.id, {
         chat: [],
         pendingResponse: null,
         pendingSelectedEditIds: {},
-      }),
-      isStreaming: false,
-      abortController: null,
-    }));
+        isStreaming: false,
+      });
+    });
   },
 
-  startStream: (controller, userMessage) =>
+  startStream: (projectId, conversationId, controller, userMessage) => {
+    registerStream(projectId, conversationId, controller);
     set((state) => {
-      const { conversation } = ensureProjectTree(state);
-      return {
-        ...updateActiveConversation(state, {
-          title: shouldRetitleConversation(conversation)
-            ? titleFromMessage(userMessage)
-            : conversation.title,
-          pendingResponse: null,
-          pendingSelectedEditIds: {},
-          chat: [
-            ...state.chat,
-            { id: nanoid(8), role: "user", content: userMessage },
-            { id: nanoid(8), role: "assistant", content: "" },
-          ],
-        }),
+      const project = state.projects.find((item) => item.id === projectId);
+      const conversation = project?.conversations.find(
+        (item) => item.id === conversationId,
+      );
+      if (!conversation) return state;
+
+      const baseChat =
+        state.activeProjectId === projectId &&
+        project?.activeConversationId === conversationId
+          ? state.chat
+          : conversation.chat;
+
+      return updateConversationById(state, projectId, conversationId, {
+        title: shouldRetitleConversation(conversation)
+          ? titleFromMessage(userMessage)
+          : conversation.title,
+        pendingResponse: null,
+        pendingSelectedEditIds: {},
+        chat: [
+          ...baseChat,
+          { id: nanoid(8), role: "user", content: userMessage },
+          { id: nanoid(8), role: "assistant", content: "" },
+        ],
         isStreaming: true,
-        abortController: controller,
-      };
-    }),
+      });
+    });
+  },
 
   appendAssistantToken: (token) =>
     set((state) => {
@@ -613,9 +707,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     }),
 
-  finishStream: (response) =>
+  finishStream: (projectId, conversationId, response) => {
+    clearStream(projectId, conversationId);
     set((state) => {
-      const last = state.chat[state.chat.length - 1];
+      const project = state.projects.find((item) => item.id === projectId);
+      const conversation = project?.conversations.find(
+        (item) => item.id === conversationId,
+      );
+      if (!conversation) return { projects: state.projects };
+
+      const chat = conversation.chat;
+      const last = chat[chat.length - 1];
       const replaced: ChatMessage =
         last && last.role === "assistant"
           ? {
@@ -631,27 +733,32 @@ export const useAppStore = create<AppState>((set, get) => ({
             };
       const newChat =
         last && last.role === "assistant"
-          ? [...state.chat.slice(0, -1), replaced]
-          : [...state.chat, replaced];
+          ? [...chat.slice(0, -1), replaced]
+          : [...chat, replaced];
 
       const selected: Record<string, boolean> = {};
       response.edits.forEach((e) => (selected[e.id] = true));
 
-      return {
-        ...updateActiveConversation(state, {
-          chat: newChat,
-          pendingResponse: response,
-          pendingSelectedEditIds: selected,
-        }),
+      return updateConversationById(state, projectId, conversationId, {
+        chat: newChat,
+        pendingResponse: response,
+        pendingSelectedEditIds: selected,
         isStreaming: false,
-        abortController: null,
-      };
-    }),
+      });
+    });
+  },
 
   cancelStream: () => {
-    const controller = get().abortController;
-    if (controller) controller.abort();
-    set({ isStreaming: false, abortController: null });
+    const state = get();
+    const project = getActiveProject(state.projects, state.activeProjectId);
+    const conversation = getActiveConversation(project);
+    if (!project || !conversation) return;
+    abortStream(project.id, conversation.id);
+    set((current) =>
+      updateConversationById(current, project.id, conversation.id, {
+        isStreaming: false,
+      }),
+    );
   },
 
   toggleEditSelected: (id) =>
@@ -742,7 +849,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     ),
 
-  hydrate: (snapshot) =>
+  hydrate: (snapshot) => {
+    abortAllStreams();
     set((state) => {
       const fallback = {
         document: snapshot.document ?? state.document,
@@ -753,7 +861,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         history: snapshot.history ?? state.history,
         redoStack: snapshot.redoStack ?? [],
       };
-      const projects = normalizeProjects(snapshot.projects, fallback);
+      const projects = clearStreamingFlags(
+        normalizeProjects(snapshot.projects, fallback),
+      );
       const requestedProjectId = snapshot.activeProjectId ?? state.activeProjectId;
       const activeProject = getActiveProject(projects, requestedProjectId);
       const activeConversation = getActiveConversation(activeProject);
@@ -766,14 +876,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeProjectId: activeProject?.id ?? projects[0].id,
         ...(activeConversation
           ? activeFieldsFromConversation(activeConversation)
-          : fallback),
+          : { ...fallback, isStreaming: false }),
         redoStack: activeConversation?.redoStack ?? [],
         hydrated: true,
         isStreaming: false,
-        abortController: null,
       };
-    }),
+    });
+  },
 }));
+
+export function getActiveProjectFromState(state: AppState): Project | undefined {
+  return getActiveProject(state.projects, state.activeProjectId);
+}
+
+export function getActiveConversationFromState(
+  state: AppState,
+): Conversation | undefined {
+  return getActiveConversation(getActiveProjectFromState(state));
+}
 
 export const filterSelectedEdits = (
   response: AiEditResponse | null,

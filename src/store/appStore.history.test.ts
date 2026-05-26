@@ -12,7 +12,6 @@ function resetStore() {
     pendingResponse: null,
     pendingSelectedEditIds: {},
     isStreaming: false,
-    abortController: null,
     hydrated: true,
   });
 }

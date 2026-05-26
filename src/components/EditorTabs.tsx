@@ -132,12 +132,32 @@ export function EditorTabs() {
       } else if (key === "w") {
         event.preventDefault();
         if (activeTab) requestClose(activeTab);
+      } else if (/^[1-9]$/.test(event.key)) {
+        if (pendingDelete) return;
+        const target = event.target;
+        if (
+          target instanceof HTMLElement &&
+          target.closest("input, textarea, select") !== null
+        ) {
+          return;
+        }
+        const index = Number(event.key) - 1;
+        const tab = tabs[index];
+        if (!tab || tab.id === activeTabId) return;
+        event.preventDefault();
+        switchConversation(tab.id);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab?.id, createConversation, deleteConversation]);
+  }, [
+    activeTab,
+    activeTabId,
+    createConversation,
+    pendingDelete,
+    switchConversation,
+    tabs,
+  ]);
 
   const addButton = (variant: "inline" | "pinned") => (
     <button
@@ -254,7 +274,9 @@ export function EditorTabs() {
                     <span
                       className={cn(
                         "h-2 w-2 shrink-0 rounded-full",
-                        active ? "bg-emerald-500" : "bg-slate-400",
+                        active && "bg-emerald-500",
+                        !active && tab.isStreaming && "animate-pulse bg-emerald-400",
+                        !active && !tab.isStreaming && "bg-slate-400",
                       )}
                     />
                     {isRenaming ? (
