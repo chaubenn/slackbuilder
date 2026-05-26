@@ -42,8 +42,8 @@ function App() {
       const result = await copyMessageToSlack(document);
       showStatus(
         result.usedNative
-          ? "Copied to Slack-native clipboard. Paste into Slack."
-          : "Copied as plain mrkdwn (fallback).",
+          ? "Copied to Slack clipboard ✓"
+          : "Copied as mrkdwn (fallback) ✓",
       );
     } catch (err) {
       showStatus(`Copy failed: ${(err as Error).message}`);
@@ -67,7 +67,7 @@ function App() {
 
   if (!hydrated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-100 text-sm text-slate-500">
+      <div className="flex h-screen items-center justify-center bg-slate-50 text-sm text-slate-400">
         Loading…
       </div>
     );
@@ -75,18 +75,41 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-100">
-      <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-2">
+      <header className="flex h-10 items-center gap-3 border-b border-slate-200 bg-white px-4">
         <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded bg-emerald-600" />
-          <h1 className="text-sm font-semibold text-slate-900">Slackbuilder</h1>
+          {/* Logo mark */}
+          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-600">
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 12 12"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M2 9 L6 3 L10 9"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <span className="text-sm font-semibold tracking-tight text-slate-900">
+            Slackbuilder
+          </span>
         </div>
+        <div className="h-3.5 w-px bg-slate-200" />
         <span className="text-xs text-slate-400">
-          Slack message composer with AI
+          AI-powered Slack composer
         </span>
         {copyStatus && (
-          <span className="ml-auto text-xs text-emerald-700">{copyStatus}</span>
+          <span className="ml-auto text-xs text-slate-500 transition-opacity">
+            {copyStatus}
+          </span>
         )}
       </header>
+
       <EditorTabs />
 
       <ResizableSplitPane

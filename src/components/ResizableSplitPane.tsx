@@ -52,7 +52,7 @@ export function ResizableSplitPane({
           "before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']",
           "w-1 cursor-col-resize border-l border-slate-200 bg-slate-100",
           "hover:bg-slate-200",
-          isDragging && "bg-emerald-400 border-emerald-300",
+          isDragging && "bg-violet-400 border-violet-300",
         )}
       />
       <aside

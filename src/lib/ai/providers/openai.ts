@@ -1,12 +1,59 @@
-import type { AiProvider, AiProviderSettings, ChatRole, StreamOpts } from "../types";
+import type {
+  AiProvider,
+  AiProviderSettings,
+  ChatRole,
+  ContentPart,
+  StreamOpts,
+} from "../types";
 import { PROVIDERS } from "../types";
 
+// ---------------------------------------------------------------------------
+// OpenAI-compatible content serialiser
+// ---------------------------------------------------------------------------
+function toOpenAIContent(content: string | ContentPart[]) {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") {
+      return { type: "text", text: part.text };
+    }
+    return {
+      type: "image_url",
+      image_url: { url: `data:${part.mimeType};base64,${part.data}` },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Anthropic content serialiser (different schema)
+// ---------------------------------------------------------------------------
+function toAnthropicContent(content: string | ContentPart[]) {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") {
+      return { type: "text", text: part.text };
+    }
+    return {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: part.mimeType as
+          | "image/jpeg"
+          | "image/png"
+          | "image/gif"
+          | "image/webp",
+        data: part.data,
+      },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Providers
+// ---------------------------------------------------------------------------
 export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
-  const baseUrl =
-    (settings.baseUrl?.trim() || PROVIDERS.openai.defaultBaseUrl).replace(
-      /\/$/,
-      "",
-    );
+  const baseUrl = (
+    settings.baseUrl?.trim() || PROVIDERS.openai.defaultBaseUrl
+  ).replace(/\/$/, "");
 
   return {
     id: "openai",
@@ -14,7 +61,10 @@ export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
     async streamChat(messages, opts: StreamOpts) {
       const body = {
         model: settings.model || PROVIDERS.openai.defaultModel,
-        messages,
+        messages: messages.map((m) => ({
+          role: m.role,
+          content: toOpenAIContent(m.content),
+        })),
         stream: true,
         temperature: 0.4,
       };
@@ -46,12 +96,12 @@ export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
   };
 }
 
-export function createOpenRouterProvider(settings: AiProviderSettings): AiProvider {
-  const baseUrl =
-    (settings.baseUrl?.trim() || PROVIDERS.openrouter.defaultBaseUrl).replace(
-      /\/$/,
-      "",
-    );
+export function createOpenRouterProvider(
+  settings: AiProviderSettings,
+): AiProvider {
+  const baseUrl = (
+    settings.baseUrl?.trim() || PROVIDERS.openrouter.defaultBaseUrl
+  ).replace(/\/$/, "");
 
   return {
     id: "openrouter",
@@ -59,7 +109,10 @@ export function createOpenRouterProvider(settings: AiProviderSettings): AiProvid
     async streamChat(messages, opts: StreamOpts) {
       const body = {
         model: settings.model || PROVIDERS.openrouter.defaultModel,
-        messages,
+        messages: messages.map((m) => ({
+          role: m.role,
+          content: toOpenAIContent(m.content),
+        })),
         stream: true,
         temperature: 0.4,
       };
@@ -78,7 +131,9 @@ export function createOpenRouterProvider(settings: AiProviderSettings): AiProvid
 
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
-        throw new Error(`OpenRouter error ${res.status}: ${text || res.statusText}`);
+        throw new Error(
+          `OpenRouter error ${res.status}: ${text || res.statusText}`,
+        );
       }
 
       return readSseStream(res.body, opts.onToken, (line) => {
@@ -94,28 +149,35 @@ export function createOpenRouterProvider(settings: AiProviderSettings): AiProvid
 }
 
 // Anthropic uses a different streaming shape; it emits SSE events of various types.
-export function createAnthropicProvider(settings: AiProviderSettings): AiProvider {
-  const baseUrl =
-    (settings.baseUrl?.trim() || PROVIDERS.anthropic.defaultBaseUrl).replace(
-      /\/$/,
-      "",
-    );
+export function createAnthropicProvider(
+  settings: AiProviderSettings,
+): AiProvider {
+  const baseUrl = (
+    settings.baseUrl?.trim() || PROVIDERS.anthropic.defaultBaseUrl
+  ).replace(/\/$/, "");
 
   return {
     id: "anthropic",
     defaultModel: PROVIDERS.anthropic.defaultModel,
     async streamChat(messages, opts: StreamOpts) {
-      const systemMessage = messages.find((m) => m.role === "system")?.content;
-      const conversational = messages.filter((m) => m.role !== "system");
+      // Anthropic separates system messages from conversational messages
+      const systemMessages = messages
+        .filter((m) => m.role === "system")
+        .map((m) => (typeof m.content === "string" ? m.content : ""))
+        .join("\n\n");
+
+      const conversational = messages
+        .filter((m) => m.role !== "system")
+        .map((m) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: toAnthropicContent(m.content),
+        }));
 
       const body = {
         model: settings.model || PROVIDERS.anthropic.defaultModel,
         max_tokens: 4096,
-        system: systemMessage,
-        messages: conversational.map((m) => ({
-          role: m.role === "assistant" ? "assistant" : "user",
-          content: m.content,
-        })),
+        system: systemMessages || undefined,
+        messages: conversational,
         stream: true,
       };
 
@@ -133,7 +195,9 @@ export function createAnthropicProvider(settings: AiProviderSettings): AiProvide
 
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
-        throw new Error(`Anthropic error ${res.status}: ${text || res.statusText}`);
+        throw new Error(
+          `Anthropic error ${res.status}: ${text || res.statusText}`,
+        );
       }
 
       return readSseStream(res.body, opts.onToken, (line) => {
@@ -154,6 +218,9 @@ export function createAnthropicProvider(settings: AiProviderSettings): AiProvide
   };
 }
 
+// ---------------------------------------------------------------------------
+// SSE stream reader
+// ---------------------------------------------------------------------------
 async function readSseStream(
   body: ReadableStream<Uint8Array>,
   onToken: ((t: string) => void) | undefined,

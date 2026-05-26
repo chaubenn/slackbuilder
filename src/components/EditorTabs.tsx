@@ -21,6 +21,12 @@ interface DragState {
   position: "before" | "after";
 }
 
+// Fire this after every programmatic tab creation so AiChatPanel auto-focuses
+// its prompt textarea.
+function emitFocusPrompt() {
+  window.dispatchEvent(new CustomEvent("slackbuilder:focus-prompt"));
+}
+
 export function EditorTabs() {
   const projects = useAppStore((s) => s.projects);
   const activeProjectId = useAppStore((s) => s.activeProjectId);
@@ -107,7 +113,11 @@ export function EditorTabs() {
     setRenameDraft("");
   };
 
-  const applyReorder = (sourceId: string, targetId: string, position: "before" | "after") => {
+  const applyReorder = (
+    sourceId: string,
+    targetId: string,
+    position: "before" | "after",
+  ) => {
     if (sourceId === targetId) return;
     const ids = tabs.map((tab) => tab.id);
     const fromIndex = ids.indexOf(sourceId);
@@ -121,6 +131,11 @@ export function EditorTabs() {
     reorderConversations(ids);
   };
 
+  const handleCreateConversation = () => {
+    createConversation();
+    emitFocusPrompt();
+  };
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const mod = event.metaKey || event.ctrlKey;
@@ -128,7 +143,7 @@ export function EditorTabs() {
       const key = event.key.toLowerCase();
       if (key === "t") {
         event.preventDefault();
-        createConversation();
+        handleCreateConversation();
       } else if (key === "w") {
         event.preventDefault();
         if (activeTab) requestClose(activeTab);
@@ -162,24 +177,24 @@ export function EditorTabs() {
   const addButton = (variant: "inline" | "pinned") => (
     <button
       type="button"
-      onClick={() => createConversation()}
+      onClick={handleCreateConversation}
       className={cn(
-        "mb-px inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800",
+        "mb-px inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700",
         variant === "pinned" && "ml-1",
       )}
       title={`New tab (${MOD_LABEL}+T)`}
       aria-label="New tab"
     >
-      <Plus size={15} />
+      <Plus size={14} />
     </button>
   );
 
   return (
     <>
-      <div className="flex min-h-10 items-end border-b border-slate-300 bg-slate-100 px-2 pt-2">
+      <div className="flex min-h-9 items-end border-b border-slate-200 bg-slate-100/80 px-2 pt-1.5">
         <div
           ref={scrollerRef}
-          className="no-scrollbar flex min-w-0 flex-1 items-end gap-1 overflow-x-auto"
+          className="no-scrollbar flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto"
           onDragOver={(event) => {
             if (dragRef.current) event.preventDefault();
           }}
@@ -245,11 +260,11 @@ export function EditorTabs() {
               >
                 <div
                   className={cn(
-                    "group flex max-w-56 items-center gap-1 rounded-t-md border text-xs",
+                    "group flex max-w-52 items-center gap-1 rounded-t-md border text-xs transition-colors",
                     active
-                      ? "border-slate-300 border-b-white bg-white text-slate-900"
-                      : "border-transparent bg-slate-200/70 text-slate-600 hover:bg-slate-200",
-                    drag?.sourceId === tab.id && "opacity-60",
+                      ? "border-slate-200 border-b-white bg-white text-slate-900 shadow-sm"
+                      : "border-transparent bg-transparent text-slate-500 hover:bg-white/60 hover:text-slate-800",
+                    drag?.sourceId === tab.id && "opacity-50",
                   )}
                   onContextMenu={(event) => {
                     event.preventDefault();
@@ -273,10 +288,12 @@ export function EditorTabs() {
                   >
                     <span
                       className={cn(
-                        "h-2 w-2 shrink-0 rounded-full",
-                        active && "bg-emerald-500",
-                        !active && tab.isStreaming && "animate-pulse bg-emerald-400",
-                        !active && !tab.isStreaming && "bg-slate-400",
+                        "h-1.5 w-1.5 shrink-0 rounded-full transition-colors",
+                        active && "bg-violet-500",
+                        !active &&
+                          tab.isStreaming &&
+                          "animate-pulse bg-violet-400",
+                        !active && !tab.isStreaming && "bg-slate-300",
                       )}
                     />
                     {isRenaming ? (
@@ -310,11 +327,11 @@ export function EditorTabs() {
                       event.stopPropagation();
                       requestClose(tab);
                     }}
-                    className="mr-1 rounded p-0.5 text-slate-400 opacity-70 hover:bg-slate-300 hover:text-slate-700 group-hover:opacity-100"
+                    className="mr-1 rounded p-0.5 text-slate-400 opacity-0 transition-opacity hover:bg-slate-200 hover:text-slate-700 group-hover:opacity-100"
                     aria-label={`Close ${tab.title}`}
                     title={`Close (${MOD_LABEL}+W)`}
                   >
-                    <X size={12} />
+                    <X size={11} />
                   </button>
                 </div>
                 {showLeftMarker && <DropMarker side="left" />}
@@ -363,7 +380,7 @@ function DropMarker({ side }: { side: "left" | "right" }) {
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute bottom-0 h-7 w-0.5 rounded bg-emerald-500",
+        "pointer-events-none absolute bottom-0 h-6 w-0.5 rounded bg-violet-500",
         side === "left" ? "left-0 -translate-x-1/2" : "right-0 translate-x-1/2",
       )}
     />
@@ -382,14 +399,14 @@ function TabContextMenu({ x, y, onRename, onClose }: TabContextMenuProps) {
     <div
       role="menu"
       style={{ position: "fixed", top: y, left: x }}
-      className="z-50 min-w-36 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-sm shadow-lg"
+      className="z-50 min-w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-xl"
       onMouseDown={(event) => event.stopPropagation()}
     >
       <button
         type="button"
         role="menuitem"
         onClick={onRename}
-        className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-100"
+        className="block w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50"
       >
         Rename
       </button>
@@ -435,25 +452,25 @@ function ConfirmDeleteTabModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       onClick={onCancel}
     >
       <div
-        className="w-[380px] rounded-lg bg-white p-5 shadow-xl"
+        className="w-[380px] rounded-xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 className="text-base font-semibold text-slate-900">Delete tab?</h2>
+        <h2 className="text-base font-semibold text-slate-900">Close tab?</h2>
         <p className="mt-2 text-sm text-slate-600">
-          <span className="font-medium text-slate-800">"{tab.title}"</span> has
-          editor content. Deleting it cannot be undone.
+          <span className="font-medium text-slate-800">&ldquo;{tab.title}&rdquo;</span>{" "}
+          has editor content. Closing it cannot be undone.
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Cancel
           </button>
@@ -461,9 +478,9 @@ function ConfirmDeleteTabModal({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
+            className="rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
           >
-            Delete
+            Close
           </button>
         </div>
       </div>

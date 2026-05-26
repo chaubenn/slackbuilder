@@ -34,19 +34,21 @@ export function PendingEditCard() {
   };
 
   return (
-    <div className="border-t border-slate-200 bg-amber-50/70 px-4 py-3 text-sm">
+    <div className="border-t border-slate-200 bg-white px-4 py-3 text-sm">
       <div className="mb-2 flex items-center gap-2">
-        <Sparkles size={14} className="text-amber-700" />
-        <span className="font-medium text-amber-900">
+        <Sparkles size={13} className="text-violet-500" />
+        <span className="font-medium text-slate-800">
           {pendingResponse.edits.length} proposed edit
           {pendingResponse.edits.length === 1 ? "" : "s"}
         </span>
         <button
           type="button"
           onClick={() => setAllEditsSelected(selectedCount === 0)}
-          className="ml-auto text-xs text-amber-800 hover:underline"
+          className="ml-auto text-xs text-slate-400 hover:text-violet-600 hover:underline transition-colors"
         >
-          {selectedCount === pendingResponse.edits.length ? "Unselect all" : "Select all"}
+          {selectedCount === pendingResponse.edits.length
+            ? "Unselect all"
+            : "Select all"}
         </button>
       </div>
 
@@ -54,19 +56,17 @@ export function PendingEditCard() {
         {pendingResponse.edits.map((edit) => (
           <li
             key={edit.id}
-            className={cn(
-              "flex items-start gap-2 rounded-md border border-amber-200 bg-white p-2",
-            )}
+            className="flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2"
           >
             <input
               type="checkbox"
               checked={Boolean(selected[edit.id])}
               onChange={() => toggleEditSelected(edit.id)}
-              className="mt-0.5"
+              className="mt-0.5 accent-violet-600"
             />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="rounded bg-slate-200 px-1.5 py-0.5 font-mono text-slate-600">
                   {edit.type}
                 </span>
                 <span className="truncate font-mono">
@@ -76,10 +76,10 @@ export function PendingEditCard() {
                 </span>
               </div>
               {edit.rationale && (
-                <p className="mt-1 text-xs text-slate-700">{edit.rationale}</p>
+                <p className="mt-1 text-xs text-slate-600">{edit.rationale}</p>
               )}
               {edit.content && (
-                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-1.5 text-[11px] text-slate-800">
+                <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded-md bg-white p-1.5 text-[11px] text-slate-700 ring-1 ring-slate-100">
                   {edit.content}
                 </pre>
               )}
@@ -94,18 +94,20 @@ export function PendingEditCard() {
           onClick={onAcceptAll}
           disabled={selectedCount === 0}
           className={cn(
-            "inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700",
+            "inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-violet-700",
             selectedCount === 0 && "cursor-not-allowed opacity-50",
           )}
         >
-          <Check size={12} /> Accept {selectedCount > 0 ? `(${selectedCount})` : ""}
+          <Check size={12} />
+          Accept{selectedCount > 0 ? ` (${selectedCount})` : ""}
         </button>
         <button
           type="button"
           onClick={rejectEdits}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
         >
-          <X size={12} /> Reject all
+          <X size={12} />
+          Dismiss
         </button>
       </div>
     </div>

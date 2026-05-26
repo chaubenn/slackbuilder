@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Editor } from "@tiptap/react";
 import {
   Bold,
@@ -39,8 +39,8 @@ function ToolbarButton({ active, disabled, onClick, title, children }: ButtonPro
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "h-8 w-8 inline-flex items-center justify-center rounded text-slate-600 hover:bg-slate-100",
-        active && "bg-slate-200 text-slate-900",
+        "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
+        active && "bg-slate-100 text-slate-900",
         disabled && "opacity-40 cursor-not-allowed",
       )}
     >
@@ -50,12 +50,13 @@ function ToolbarButton({ active, disabled, onClick, title, children }: ButtonPro
 }
 
 function Separator() {
-  return <div className="mx-1 h-5 w-px bg-slate-200" />;
+  return <div className="mx-0.5 h-4 w-px bg-slate-200" />;
 }
 
 export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
   const [, forceTick] = useState(0);
+  const imageFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!usableEditor) return;
@@ -78,15 +79,27 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
     }
   })();
 
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !usableEditor) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result as string;
+      usableEditor.chain().focus().insertSlackImage({ src, alt: file.name }).run();
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   return (
-    <div className="flex items-center gap-0.5 border-b border-slate-200 bg-slate-50 px-2 py-1.5">
+    <div className="flex items-center gap-0.5 border-b border-slate-200 bg-white px-2 py-1.5">
       <ToolbarButton
         title="Bold (Cmd+B)"
         active={usableEditor?.isActive("bold")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleBold().run()}
       >
-        <Bold size={16} />
+        <Bold size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Italic (Cmd+I)"
@@ -94,7 +107,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleItalic().run()}
       >
-        <Italic size={16} />
+        <Italic size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Strikethrough"
@@ -102,7 +115,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleStrike().run()}
       >
-        <Strikethrough size={16} />
+        <Strikethrough size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Inline code"
@@ -110,7 +123,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleCode().run()}
       >
-        <Code size={16} />
+        <Code size={15} />
       </ToolbarButton>
       <Separator />
       <ToolbarButton
@@ -119,7 +132,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleBulletList().run()}
       >
-        <List size={16} />
+        <List size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Numbered list"
@@ -127,7 +140,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleOrderedList().run()}
       >
-        <ListOrdered size={16} />
+        <ListOrdered size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Block quote"
@@ -135,7 +148,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleBlockquote().run()}
       >
-        <Quote size={16} />
+        <Quote size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Code block"
@@ -143,7 +156,7 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleCodeBlock().run()}
       >
-        <Code2 size={16} />
+        <Code2 size={15} />
       </ToolbarButton>
       <Separator />
       <ToolbarButton
@@ -155,33 +168,37 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
           usableEditor?.chain().focus().setLink({ href: url }).run();
         }}
       >
-        <LinkIcon size={16} />
+        <LinkIcon size={15} />
       </ToolbarButton>
+      {/* Image button — opens a file picker instead of a URL prompt */}
       <ToolbarButton
-        title="Insert image URL"
+        title="Insert image from file"
         disabled={!usableEditor}
-        onClick={() => {
-          const url = window.prompt("Image URL");
-          if (!url) return;
-          usableEditor?.chain().focus().insertSlackImage({ src: url, alt: "" }).run();
-        }}
+        onClick={() => imageFileRef.current?.click()}
       >
-        <ImageIcon size={16} />
+        <ImageIcon size={15} />
       </ToolbarButton>
+      <input
+        ref={imageFileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageFileChange}
+      />
       <Separator />
       <ToolbarButton
         title="Undo (Cmd+Z)"
         disabled={!can?.undo()}
         onClick={() => usableEditor?.chain().focus().undo().run()}
       >
-        <Undo2 size={16} />
+        <Undo2 size={15} />
       </ToolbarButton>
       <ToolbarButton
         title="Redo (Cmd+Shift+Z)"
         disabled={!can?.redo()}
         onClick={() => usableEditor?.chain().focus().redo().run()}
       >
-        <Redo2 size={16} />
+        <Redo2 size={15} />
       </ToolbarButton>
       <div className="flex-1" />
       <button
@@ -189,12 +206,12 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         onClick={onCopy}
         disabled={isCopying}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-emerald-700",
-          isCopying && "opacity-70 cursor-wait",
+          "inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-slate-800",
+          isCopying && "opacity-60 cursor-wait",
         )}
         title="Copy to Slack (Cmd+Shift+C)"
       >
-        <Copy size={14} />
+        <Copy size={13} />
         {isCopying ? "Copying…" : "Copy to Slack"}
       </button>
     </div>

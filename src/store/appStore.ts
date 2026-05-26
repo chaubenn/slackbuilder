@@ -88,6 +88,7 @@ export interface AppState {
     conversationId: string,
     controller: AbortController,
     userMessage: string,
+    imageCount?: number,
   ) => void;
   appendAssistantToken: (token: string) => void;
   finishStream: (
@@ -663,7 +664,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  startStream: (projectId, conversationId, controller, userMessage) => {
+  startStream: (projectId, conversationId, controller, userMessage, imageCount) => {
     registerStream(projectId, conversationId, controller);
     set((state) => {
       const project = state.projects.find((item) => item.id === projectId);
@@ -686,7 +687,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         pendingSelectedEditIds: {},
         chat: [
           ...baseChat,
-          { id: nanoid(8), role: "user", content: userMessage },
+          {
+            id: nanoid(8),
+            role: "user",
+            content: userMessage,
+            ...(imageCount ? { imageCount } : {}),
+          },
           { id: nanoid(8), role: "assistant", content: "" },
         ],
         isStreaming: true,
