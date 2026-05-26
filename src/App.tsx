@@ -8,6 +8,7 @@ import { useAppStore } from "./store/appStore";
 import { hydrateStore, useAutosave } from "./store/persistence";
 import { copyMessageToSlack } from "./features/copy/copyToSlack";
 import { ResizableSplitPane } from "./components/ResizableSplitPane";
+import { EditorTabs } from "./components/EditorTabs";
 
 function App() {
   const document = useAppStore((s) => s.document);
@@ -86,6 +87,7 @@ function App() {
           <span className="ml-auto text-xs text-emerald-700">{copyStatus}</span>
         )}
       </header>
+      <EditorTabs />
 
       <ResizableSplitPane
         widthPx={aiPanelWidth}

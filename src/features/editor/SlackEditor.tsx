@@ -83,13 +83,14 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
     onUpdate({ editor: e }) {
       onChangeRef.current(e.getJSON());
     },
-    onCreate({ editor: e }) {
-      onReadyRef.current?.(e);
-    },
-    onDestroy() {
-      onReadyRef.current?.(null);
-    },
   });
+
+  useEffect(() => {
+    onReadyRef.current?.(editor ?? null);
+    return () => {
+      onReadyRef.current?.(null);
+    };
+  }, [editor]);
 
   // Keep editor in sync if the document is replaced externally (AI edit accept,
   // revert, hydrate). Compare JSON to avoid loops with onUpdate.

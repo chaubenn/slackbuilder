@@ -11,9 +11,12 @@
   --color-slack-quote-border: #dddddd;
   --color-slack-accent: #007a5a;
 
-  --font-slack: "Slack-Lato", "appleLogo", "Lato", "Helvetica Neue",
-    Helvetica, Arial, sans-serif;
-  --font-slack-mono: Monaco, Menlo, Consolas, "Courier New", monospace;
+  --font-sans: "Geist Variable", "Geist", "Inter", system-ui,
+    -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", "JetBrains Mono",
+    Menlo, Monaco, Consolas, "Courier New", monospace;
+  --font-slack: var(--font-sans);
+  --font-slack-mono: var(--font-mono);
 }
 
 html,
@@ -192,4 +195,12 @@ body {
 }
 .app-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.25);
+}
+
+/* Hide scrollbar entirely (used by the tab strip so overflow doesn't shift layout). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

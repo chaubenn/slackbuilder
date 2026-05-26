@@ -4,7 +4,7 @@ import { tipTapToMrkdwn } from "../lib/slack/tipTapToMrkdwn";
 import { useAppStore, EMPTY_DOC } from "./appStore";
 
 function resetStore() {
-  useAppStore.setState({
+  useAppStore.getState().hydrate({
     document: EMPTY_DOC,
     history: [],
     redoStack: [],
@@ -26,7 +26,7 @@ describe("AI edit undo/redo", () => {
     const before = mrkdwnToTipTap("hello");
     const after = mrkdwnToTipTap("hello world");
 
-    useAppStore.setState({ document: before });
+    useAppStore.getState().setDocument(before);
     useAppStore.getState().acceptEdits({ document: after, editIds: ["e1"] });
 
     useAppStore.getState().revertLastAiChange();
@@ -40,7 +40,7 @@ describe("AI edit undo/redo", () => {
     const before = mrkdwnToTipTap("hello");
     const after = mrkdwnToTipTap("hello world");
 
-    useAppStore.setState({ document: before });
+    useAppStore.getState().setDocument(before);
     useAppStore.getState().acceptEdits({ document: after, editIds: ["e1"] });
     useAppStore.getState().revertLastAiChange();
     useAppStore.getState().redoLastAiChange();
@@ -55,7 +55,7 @@ describe("AI edit undo/redo", () => {
     const docB = mrkdwnToTipTap("two");
     const docC = mrkdwnToTipTap("three");
 
-    useAppStore.setState({ document: docA });
+    useAppStore.getState().setDocument(docA);
     useAppStore.getState().acceptEdits({ document: docB, editIds: ["e1"] });
     useAppStore.getState().revertLastAiChange();
 
@@ -69,7 +69,7 @@ describe("AI edit undo/redo", () => {
     const before = mrkdwnToTipTap("hello");
     const after = mrkdwnToTipTap("hello world");
 
-    useAppStore.setState({ document: before });
+    useAppStore.getState().setDocument(before);
     useAppStore.getState().acceptEdits({ document: after, editIds: ["e1"] });
     useAppStore.getState().revertLastAiChange();
     useAppStore.getState().resetMessage();

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { type Editor } from "@tiptap/react";
 import {
   Bold,
@@ -54,6 +55,21 @@ function Separator() {
 
 export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
+  const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    if (!usableEditor) return;
+    const update = () => forceTick((tick) => tick + 1);
+    usableEditor.on("transaction", update);
+    usableEditor.on("selectionUpdate", update);
+    usableEditor.on("update", update);
+    return () => {
+      usableEditor.off("transaction", update);
+      usableEditor.off("selectionUpdate", update);
+      usableEditor.off("update", update);
+    };
+  }, [usableEditor]);
+
   const can = (() => {
     try {
       return usableEditor?.can();
