@@ -1,9 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowUp,
   Image as ImageIcon,
@@ -14,7 +17,6 @@ import {
   Settings,
   Trash2,
   X,
-  Download,
   Eye,
   Brain,
   ChevronDown,
@@ -34,15 +36,19 @@ import { parseAiResponse } from "../../lib/ai/parseEditResponse";
 import { applyEdits } from "../../lib/ai/applyEdits";
 import { tipTapToMrkdwn } from "../../lib/slack/tipTapToMrkdwn";
 import { tipTapToBlocks } from "../../lib/slack/tipTapToBlocks";
-import { mrkdwnToTipTap } from "../../lib/slack/mrkdwnToTipTap";
 import { PendingEditCard } from "./PendingEditCard";
 import { isApplyCommand } from "./applyCommand";
 import { cn } from "../../lib/utils";
 import {
   getModelCapabilities,
+  PROVIDERS,
   PROVIDER_MODEL_PRESETS,
 } from "../../lib/ai/types";
-import type { ContentPart } from "../../lib/ai/types";
+import type {
+  AiProviderId,
+  AiProviderSettings,
+  ContentPart,
+} from "../../lib/ai/types";
 
 interface AiChatPanelProps {
   onOpenSettings: () => void;
@@ -68,35 +74,85 @@ const QUICK_PROMPTS = [
 // ---------------------------------------------------------------------------
 interface ModelSelectorProps {
   model: string;
-  provider: import("../../lib/ai/types").AiProviderId;
-  onSelect: (model: string) => void;
+  provider: AiProviderId;
+  onSelect: (provider: AiProviderId, model: string) => void;
+  onOpenSettings: () => void;
 }
 
-function ModelSelector({ model, provider, onSelect }: ModelSelectorProps) {
+function ModelSelector({
+  model,
+  provider,
+  onSelect,
+  onOpenSettings,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const presets = PROVIDER_MODEL_PRESETS[provider] ?? [];
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ left: number; bottom: number } | null>(
+    null,
+  );
   const caps = getModelCapabilities(model);
   const shortName = model.split("/").pop() ?? model;
+
+  // Build a flat grouped list of every preset model across providers so the
+  // user can switch provider+model in one click without going to Settings.
+  const grouped = useMemo(
+    () =>
+      (Object.keys(PROVIDERS) as AiProviderId[]).map((pid) => ({
+        provider: pid,
+        label: PROVIDERS[pid].label,
+        presets: PROVIDER_MODEL_PRESETS[pid] ?? [],
+      })),
+    [],
+  );
+
+  // Position the portal popover above the trigger button. We re-measure on
+  // open + on viewport changes so it stays anchored even if the user resizes.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setCoords({
+        left: rect.left,
+        bottom: window.innerHeight - rect.top + 6,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (
+        buttonRef.current?.contains(target) ||
+        popoverRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
     };
     window.addEventListener("mousedown", close);
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors select-none"
         title="Select model"
       >
-        <span className="max-w-[90px] truncate">{shortName}</span>
+        <span className="max-w-[120px] truncate">{shortName}</span>
         {caps.vision && (
           <span title="Vision">
             <Eye size={9} className="shrink-0 text-blue-400" />
@@ -110,51 +166,76 @@ function ModelSelector({ model, provider, onSelect }: ModelSelectorProps) {
         <ChevronDown size={9} className="shrink-0" />
       </button>
 
-      {open && (
-        <div className="absolute bottom-full left-0 mb-1 z-50 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-xl">
-          <p className="px-3 py-1 text-[10px] text-slate-400 uppercase tracking-wide">
-            Quick pick
-          </p>
-          {presets.map((preset) => {
-            const pc = getModelCapabilities(preset.id);
-            const isActive = preset.id === model;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => {
-                  onSelect(preset.id);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50",
-                  isActive && "text-violet-700",
-                )}
-              >
-                {isActive ? (
-                  <Check size={10} className="shrink-0 text-violet-500" />
-                ) : (
-                  <span className="w-2.5 shrink-0" />
-                )}
-                <span className="flex-1 truncate">{preset.label}</span>
-                <span className="flex shrink-0 items-center gap-0.5">
-                  {pc.vision && <Eye size={9} className="text-blue-400" />}
-                  {pc.reasoning && <Brain size={9} className="text-violet-400" />}
-                </span>
-              </button>
-            );
-          })}
-          <div className="mx-3 my-1 border-t border-slate-100" />
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="block w-full px-3 py-1.5 text-left text-slate-400 hover:bg-slate-50"
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            style={{
+              position: "fixed",
+              left: coords.left,
+              bottom: coords.bottom,
+            }}
+            className="z-[1000] max-h-[360px] w-60 overflow-y-auto app-scrollbar rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-xl"
           >
-            Edit in Settings…
-          </button>
-        </div>
-      )}
-    </div>
+            {grouped.map((group, gi) => (
+              <div key={group.provider}>
+                {gi > 0 && <div className="my-1 border-t border-slate-100" />}
+                <p className="px-3 py-1 text-[10px] text-slate-400 uppercase tracking-wide">
+                  {group.label}
+                </p>
+                {group.presets.map((preset) => {
+                  const pc = getModelCapabilities(preset.id);
+                  const isActive =
+                    preset.id === model && group.provider === provider;
+                  return (
+                    <button
+                      key={`${group.provider}:${preset.id}`}
+                      type="button"
+                      onClick={() => {
+                        onSelect(group.provider, preset.id);
+                        setOpen(false);
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50",
+                        isActive && "text-violet-700",
+                      )}
+                    >
+                      {isActive ? (
+                        <Check size={10} className="shrink-0 text-violet-500" />
+                      ) : (
+                        <span className="w-2.5 shrink-0" />
+                      )}
+                      <span className="flex-1 truncate">{preset.label}</span>
+                      <span className="flex shrink-0 items-center gap-0.5">
+                        {pc.vision && (
+                          <Eye size={9} className="text-blue-400" />
+                        )}
+                        {pc.reasoning && (
+                          <Brain size={9} className="text-violet-400" />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onOpenSettings();
+              }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-500 hover:bg-slate-50 hover:text-violet-600"
+            >
+              <Settings size={10} className="shrink-0" />
+              <span>API keys & custom model…</span>
+            </button>
+          </div>,
+          window.document.body,
+        )}
+    </>
   );
 }
 
@@ -278,6 +359,21 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     const val = e.target.value;
     setInput(val);
     setPromptDraft(val);
+  };
+
+  // Atomic provider + model switch from the inline selector. When switching
+  // providers we also reset the base URL to the new provider's default so
+  // requests don't hit the wrong endpoint.
+  const handleSelectModel = (
+    nextProvider: AiProviderId,
+    nextModel: string,
+  ) => {
+    const patch: Partial<AiProviderSettings> = { model: nextModel };
+    if (nextProvider !== settings.provider) {
+      patch.provider = nextProvider;
+      patch.baseUrl = PROVIDERS[nextProvider].defaultBaseUrl;
+    }
+    setSettings(patch);
   };
 
   const inputText = input.trim();
@@ -415,23 +511,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     }
   };
 
-  const handleApplyMessageToEditor = (content: string) => {
-    try {
-      const newDoc = mrkdwnToTipTap(content);
-      acceptEdits({ document: newDoc, editIds: [] });
-    } catch {
-      acceptEdits({
-        document: {
-          type: "doc",
-          content: [
-            { type: "paragraph", content: [{ type: "text", text: content }] },
-          ],
-        },
-        editIds: [],
-      });
-    }
-  };
-
   return (
     <div className="flex h-full flex-col bg-slate-50">
       {/* Header */}
@@ -542,6 +621,12 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
 
         {chat.map((msg, idx) => {
           const isLast = idx === chat.length - 1;
+          // While the stream is in flight, the last assistant message is being
+          // filled with raw JSON tokens. Suppress that internal stream and
+          // show a friendly placeholder; the parsed assistant message and
+          // structured edits replace it the moment finishStream fires.
+          const isStreamingThisMessage =
+            msg.role === "assistant" && isLast && isStreaming;
           return (
             <div
               key={msg.id}
@@ -558,7 +643,19 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     : "bg-white text-slate-800 shadow-sm ring-1 ring-slate-100",
                 )}
               >
-                {msg.content || (
+                {isStreamingThisMessage ? (
+                  <span className="flex items-center gap-1.5 text-slate-500">
+                    <Sparkles size={12} className="text-violet-500" />
+                    <span>Making changes</span>
+                    <span className="inline-flex items-center gap-0.5">
+                      <span className="inline-block h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:0ms]" />
+                      <span className="inline-block h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:150ms]" />
+                      <span className="inline-block h-1 w-1 animate-bounce rounded-full bg-current [animation-delay:300ms]" />
+                    </span>
+                  </span>
+                ) : msg.content ? (
+                  msg.content
+                ) : (
                   <span className="flex items-center gap-1 text-slate-400">
                     <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:0ms]" />
                     <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:150ms]" />
@@ -573,31 +670,15 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     </span>
                   </div>
                 )}
-                {msg.role === "assistant" && msg.pendingEditCount ? (
+                {msg.role === "assistant" &&
+                !isStreamingThisMessage &&
+                msg.pendingEditCount ? (
                   <div className="mt-1 text-xs text-slate-400">
                     {msg.pendingEditCount} edit
                     {msg.pendingEditCount === 1 ? "" : "s"} proposed
                   </div>
                 ) : null}
               </div>
-
-              {msg.role === "assistant" &&
-                isLast &&
-                !pendingResponse &&
-                !isStreaming &&
-                msg.content.trim().length > 30 && (
-                  <div className="mt-1">
-                    <button
-                      type="button"
-                      onClick={() => handleApplyMessageToEditor(msg.content)}
-                      title="Parse this response as mrkdwn and apply it directly to the editor"
-                      className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-violet-600 transition-colors"
-                    >
-                      <Download size={11} />
-                      Apply to editor
-                    </button>
-                  </div>
-                )}
             </div>
           );
         })}
@@ -670,12 +751,13 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                 }
               }}
             />
-            <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
+            <div className="flex items-center gap-2 px-2 pb-1.5 pt-0.5">
               {/* Model selector */}
               <ModelSelector
                 model={settings.model}
                 provider={settings.provider}
-                onSelect={(m) => setSettings({ model: m })}
+                onSelect={handleSelectModel}
+                onOpenSettings={onOpenSettings}
               />
 
               {/* Image attach button (only if vision supported) */}
@@ -714,41 +796,44 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                 </button>
               )}
 
-              {/* Shift+Enter hint */}
-              <div className="flex-1 text-right text-[10px] text-slate-400 pr-1 select-none">
+              {/* Shift+Enter hint — sits on the left next to the model picker
+                  so it doesn't crowd the send button. */}
+              <div className="text-[10px] text-slate-400 select-none truncate">
                 {caps.vision
                   ? "Shift+Enter newline · paste image"
                   : "Shift+Enter for newline"}
               </div>
 
-              {/* Send / stop */}
-              {isStreaming ? (
-                <button
-                  type="button"
-                  onClick={cancelStream}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
-                  title="Stop"
-                  aria-label="Stop"
-                >
-                  <Square size={12} fill="currentColor" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={!canSend}
-                  className={cn(
-                    "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                    canSend
-                      ? "bg-violet-600 text-white hover:bg-violet-700"
-                      : "cursor-not-allowed bg-slate-200 text-slate-400",
-                  )}
-                  title="Send (Enter)"
-                  aria-label="Send"
-                >
-                  <ArrowUp size={14} />
-                </button>
-              )}
+              <div className="ml-auto flex shrink-0 items-center">
+                {/* Send / stop */}
+                {isStreaming ? (
+                  <button
+                    type="button"
+                    onClick={cancelStream}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                    title="Stop"
+                    aria-label="Stop"
+                  >
+                    <Square size={12} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!canSend}
+                    className={cn(
+                      "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                      canSend
+                        ? "bg-violet-600 text-white hover:bg-violet-700"
+                        : "cursor-not-allowed bg-slate-200 text-slate-400",
+                    )}
+                    title="Send (Enter)"
+                    aria-label="Send"
+                  >
+                    <ArrowUp size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
