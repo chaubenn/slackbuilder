@@ -27,13 +27,38 @@ export function applyEdits(
   opts: { fullRewrite?: string } = {},
 ): ApplyResult {
   const warnings: string[] = [];
-  let mrkdwn = tipTapToMrkdwn(doc);
+
+  // mrkdwn cannot round-trip slackImage / slackLinkUnfurl nodes — the
+  // serialiser emits them as <url|alt> Slack links, and the deserialiser
+  // recreates them as plain text-with-link-mark, losing the node type and
+  // all attributes.  Extract them before the mrkdwn pass and graft them
+  // back onto the result so the user's pasted/uploaded images survive edits.
+  const nonTextNodes: JSONContent[] = [];
+  const textOnlyContent: JSONContent[] = [];
+  for (const node of doc.content ?? []) {
+    if (node.type === "slackImage" || node.type === "slackLinkUnfurl") {
+      nonTextNodes.push(node);
+    } else {
+      textOnlyContent.push(node);
+    }
+  }
+  const textOnlyDoc: JSONContent = { ...doc, content: textOnlyContent };
+
+  const graftNonText = (resultDoc: JSONContent): JSONContent => {
+    if (nonTextNodes.length === 0) return resultDoc;
+    return {
+      ...resultDoc,
+      content: [...(resultDoc.content ?? []), ...nonTextNodes],
+    };
+  };
+
+  let mrkdwn = tipTapToMrkdwn(textOnlyDoc);
 
   if (opts.fullRewrite !== undefined) {
     const { fixed, issues } = validateMrkdwn(opts.fullRewrite);
     issues.forEach((i) => warnings.push(`${i.rule}: ${i.message}`));
     return {
-      document: mrkdwnToTipTap(fixed),
+      document: graftNonText(mrkdwnToTipTap(fixed)),
       mrkdwn: fixed,
       appliedEditIds: edits.map((e) => e.id),
       warnings,
@@ -76,7 +101,7 @@ export function applyEdits(
   issues.forEach((i) => warnings.push(`${i.rule}: ${i.message}`));
 
   return {
-    document: mrkdwnToTipTap(fixed),
+    document: graftNonText(mrkdwnToTipTap(fixed)),
     mrkdwn: fixed,
     appliedEditIds: applied,
     warnings,

@@ -4,6 +4,7 @@ import { SlackEditor } from "./features/editor/SlackEditor";
 import { EditorToolbar } from "./features/editor/EditorToolbar";
 import { AiChatPanel } from "./features/ai/AiChatPanel";
 import { SettingsModal } from "./features/settings/SettingsModal";
+import { TitleBar } from "./components/TitleBar";
 import { useAppStore } from "./store/appStore";
 import { hydrateStore, useAutosave } from "./store/persistence";
 import { copyMessageToSlack } from "./features/copy/copyToSlack";
@@ -16,12 +17,23 @@ function App() {
   const hydrated = useAppStore((s) => s.hydrated);
   const aiPanelWidth = useAppStore((s) => s.ui.aiPanelWidth);
   const setAiPanelWidth = useAppStore((s) => s.setAiPanelWidth);
+  const theme = useAppStore((s) => s.settings.theme ?? "light");
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [copying, setCopying] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const statusTimer = useRef<number | null>(null);
+
+  // Apply theme to <html> element so dark: CSS overrides work globally.
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === "dark") {
+      root.classList.add("dark");
+    } else {
+      root.classList.remove("dark");
+    }
+  }, [theme]);
 
   useEffect(() => {
     hydrateStore();
@@ -75,40 +87,7 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-100">
-      <header className="flex h-10 items-center gap-3 border-b border-slate-200 bg-white px-4">
-        <div className="flex items-center gap-2">
-          {/* Logo mark */}
-          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-600">
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 12 12"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M2 9 L6 3 L10 9"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <span className="text-sm font-semibold tracking-tight text-slate-900">
-            Slackbuilder
-          </span>
-        </div>
-        <div className="h-3.5 w-px bg-slate-200" />
-        <span className="text-xs text-slate-400">
-          AI-powered Slack composer
-        </span>
-        {copyStatus && (
-          <span className="ml-auto text-xs text-slate-500 transition-opacity">
-            {copyStatus}
-          </span>
-        )}
-      </header>
+      <TitleBar status={copyStatus} />
 
       <EditorTabs />
 

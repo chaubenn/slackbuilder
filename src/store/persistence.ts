@@ -117,6 +117,7 @@ export function snapshotToHydration(
     history: (v1Snapshot.history as AiHistoryEntry[] | undefined) ?? [],
     redoStack: [],
     isStreaming: false,
+    promptDraft: "",
     createdAt: now,
     updatedAt: now,
   };

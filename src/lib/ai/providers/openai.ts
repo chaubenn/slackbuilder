@@ -48,6 +48,31 @@ function toAnthropicContent(content: string | ContentPart[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true for OpenAI reasoning models that have restricted API options
+ * (no system messages, different temperature handling, etc.).
+ */
+function isReasoningModel(model: string): boolean {
+  return /^o[134](-mini|-preview)?$/i.test(model.trim());
+}
+
+/**
+ * Returns true for models that support `response_format: { type: "json_object" }`.
+ * Reasoning models (o1-preview, o1-mini) from early 2024 don't support it.
+ * Newer o-series (o3, o4-mini, o1-2024-12-17+) do support structured output,
+ * but we use a conservative check: only disable it for known problematic models.
+ */
+function supportsJsonResponseFormat(model: string): boolean {
+  const lower = model.toLowerCase().trim();
+  // Early o1 preview models don't support response_format
+  if (lower === "o1-preview" || lower === "o1-mini") return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
 export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
@@ -55,18 +80,35 @@ export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
     settings.baseUrl?.trim() || PROVIDERS.openai.defaultBaseUrl
   ).replace(/\/$/, "");
 
+  const model = settings.model || PROVIDERS.openai.defaultModel;
+
   return {
     id: "openai",
     defaultModel: PROVIDERS.openai.defaultModel,
     async streamChat(messages, opts: StreamOpts) {
-      const body = {
-        model: settings.model || PROVIDERS.openai.defaultModel,
-        messages: messages.map((m) => ({
+      // Reasoning models (o1-mini, o1-preview) don't support system role —
+      // convert system messages to user messages with a [SYSTEM] prefix.
+      const processedMessages = isReasoningModel(model)
+        ? messages.map((m) =>
+            m.role === "system"
+              ? { role: "user" as const, content: `[SYSTEM]\n${m.content}` }
+              : m,
+          )
+        : messages;
+
+      const body: Record<string, unknown> = {
+        model,
+        messages: processedMessages.map((m) => ({
           role: m.role,
           content: toOpenAIContent(m.content),
         })),
         stream: true,
-        temperature: 0.4,
+        temperature: isReasoningModel(model) ? undefined : 0.4,
+        // Force valid JSON output so the model can't respond with bare prose.
+        // extractJsonBlock() handles both fenced (```json{…}```) and raw ({…}) JSON.
+        ...(supportsJsonResponseFormat(model)
+          ? { response_format: { type: "json_object" } }
+          : {}),
       };
 
       const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -103,18 +145,30 @@ export function createOpenRouterProvider(
     settings.baseUrl?.trim() || PROVIDERS.openrouter.defaultBaseUrl
   ).replace(/\/$/, "");
 
+  const model = settings.model || PROVIDERS.openrouter.defaultModel;
+
   return {
     id: "openrouter",
     defaultModel: PROVIDERS.openrouter.defaultModel,
     async streamChat(messages, opts: StreamOpts) {
-      const body = {
-        model: settings.model || PROVIDERS.openrouter.defaultModel,
+      // OpenRouter: only add response_format for OpenAI-compatible models.
+      // Non-OpenAI models may not support it — we skip it to be safe.
+      const isOpenAIModel =
+        model.startsWith("openai/") ||
+        model.startsWith("gpt-") ||
+        model.startsWith("o1") ||
+        model.startsWith("o3") ||
+        model.startsWith("o4");
+
+      const body: Record<string, unknown> = {
+        model,
         messages: messages.map((m) => ({
           role: m.role,
           content: toOpenAIContent(m.content),
         })),
         stream: true,
         temperature: 0.4,
+        ...(isOpenAIModel ? { response_format: { type: "json_object" } } : {}),
       };
 
       const res = await fetch(`${baseUrl}/chat/completions`, {

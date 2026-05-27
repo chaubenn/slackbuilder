@@ -1,7 +1,8 @@
-import { X } from "lucide-react";
+import { Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PROVIDERS, type AiProviderId } from "../../lib/ai/types";
+import { cn } from "../../lib/utils";
 
 interface SettingsModalProps {
   open: boolean;
@@ -16,13 +17,15 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   if (!open) return null;
 
+  const theme = settings.theme ?? "light";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="w-[420px] rounded-xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
+        className="w-[440px] rounded-xl bg-white p-5 shadow-2xl ring-1 ring-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -37,6 +40,30 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         <div className="space-y-4">
+          {/* Theme */}
+          <div>
+            <span className="block text-sm font-medium text-slate-700 mb-1.5">
+              Theme
+            </span>
+            <div className="flex gap-2">
+              <ThemeButton
+                active={theme === "light"}
+                icon={<Sun size={14} />}
+                label="Light"
+                onClick={() => setSettings({ theme: "light" })}
+              />
+              <ThemeButton
+                active={theme === "dark"}
+                icon={<Moon size={14} />}
+                label="Dark"
+                onClick={() => setSettings({ theme: "dark" })}
+              />
+            </div>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Provider */}
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Provider</span>
             <select
@@ -52,6 +79,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             </select>
           </label>
 
+          {/* Model */}
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Model</span>
             <input
@@ -60,8 +88,13 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               onChange={(e) => setSettings({ model: e.target.value })}
               className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
             />
+            <p className="mt-1 text-xs text-slate-400">
+              You can type any model ID your API key has access to. Use the
+              quick-pick in the prompt box for common models.
+            </p>
           </label>
 
+          {/* Base URL */}
           <label className="block">
             <span className="text-sm font-medium text-slate-700">
               Base URL{" "}
@@ -76,6 +109,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
             />
           </label>
 
+          {/* API key */}
           <label className="block">
             <span className="text-sm font-medium text-slate-700">API key</span>
             <div className="mt-1 flex items-center gap-2">
@@ -111,5 +145,33 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function ThemeButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-1 items-center justify-center gap-2 rounded-lg border py-2 text-sm font-medium transition-colors",
+        active
+          ? "border-violet-300 bg-violet-50 text-violet-700"
+          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

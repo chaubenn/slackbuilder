@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowUp,
   Image as ImageIcon,
@@ -10,8 +15,16 @@ import {
   Trash2,
   X,
   Download,
+  Eye,
+  Brain,
+  ChevronDown,
+  Check,
 } from "lucide-react";
-import { useAppStore, filterSelectedEdits } from "../../store/appStore";
+import {
+  useAppStore,
+  filterSelectedEdits,
+  getActiveConversationFromState,
+} from "../../store/appStore";
 import { buildProvider } from "../../lib/ai/providers/openai";
 import {
   SLACK_SYSTEM_PROMPT,
@@ -25,6 +38,10 @@ import { mrkdwnToTipTap } from "../../lib/slack/mrkdwnToTipTap";
 import { PendingEditCard } from "./PendingEditCard";
 import { isApplyCommand } from "./applyCommand";
 import { cn } from "../../lib/utils";
+import {
+  getModelCapabilities,
+  PROVIDER_MODEL_PRESETS,
+} from "../../lib/ai/types";
 import type { ContentPart } from "../../lib/ai/types";
 
 interface AiChatPanelProps {
@@ -46,9 +63,108 @@ const QUICK_PROMPTS = [
   "add urgency but stay calm",
 ];
 
+// ---------------------------------------------------------------------------
+// Model selector popover
+// ---------------------------------------------------------------------------
+interface ModelSelectorProps {
+  model: string;
+  provider: import("../../lib/ai/types").AiProviderId;
+  onSelect: (model: string) => void;
+}
+
+function ModelSelector({ model, provider, onSelect }: ModelSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const presets = PROVIDER_MODEL_PRESETS[provider] ?? [];
+  const caps = getModelCapabilities(model);
+  const shortName = model.split("/").pop() ?? model;
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors select-none"
+        title="Select model"
+      >
+        <span className="max-w-[90px] truncate">{shortName}</span>
+        {caps.vision && (
+          <span title="Vision">
+            <Eye size={9} className="shrink-0 text-blue-400" />
+          </span>
+        )}
+        {caps.reasoning && (
+          <span title="Reasoning">
+            <Brain size={9} className="shrink-0 text-violet-400" />
+          </span>
+        )}
+        <ChevronDown size={9} className="shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-0 mb-1 z-50 w-52 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-xl">
+          <p className="px-3 py-1 text-[10px] text-slate-400 uppercase tracking-wide">
+            Quick pick
+          </p>
+          {presets.map((preset) => {
+            const pc = getModelCapabilities(preset.id);
+            const isActive = preset.id === model;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  onSelect(preset.id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50",
+                  isActive && "text-violet-700",
+                )}
+              >
+                {isActive ? (
+                  <Check size={10} className="shrink-0 text-violet-500" />
+                ) : (
+                  <span className="w-2.5 shrink-0" />
+                )}
+                <span className="flex-1 truncate">{preset.label}</span>
+                <span className="flex shrink-0 items-center gap-0.5">
+                  {pc.vision && <Eye size={9} className="text-blue-400" />}
+                  {pc.reasoning && <Brain size={9} className="text-violet-400" />}
+                </span>
+              </button>
+            );
+          })}
+          <div className="mx-3 my-1 border-t border-slate-100" />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="block w-full px-3 py-1.5 text-left text-slate-400 hover:bg-slate-50"
+          >
+            Edit in Settings…
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main panel
+// ---------------------------------------------------------------------------
 export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   const [input, setInput] = useState("");
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+
   const chat = useAppStore((s) => s.chat);
   const isStreaming = useAppStore((s) => s.isStreaming);
   const settings = useAppStore((s) => s.settings);
@@ -56,6 +172,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   const startStream = useAppStore((s) => s.startStream);
   const finishStream = useAppStore((s) => s.finishStream);
   const cancelStream = useAppStore((s) => s.cancelStream);
+  const appendAssistantToken = useAppStore((s) => s.appendAssistantToken);
   const addChatMessages = useAppStore((s) => s.addChatMessages);
   const history = useAppStore((s) => s.history);
   const redoStack = useAppStore((s) => s.redoStack);
@@ -65,6 +182,34 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   const selected = useAppStore((s) => s.pendingSelectedEditIds);
   const acceptEdits = useAppStore((s) => s.acceptEdits);
   const clearChat = useAppStore((s) => s.clearChat);
+  const setSettings = useAppStore((s) => s.setSettings);
+  const setPromptDraft = useAppStore((s) => s.setPromptDraft);
+
+  // Per-tab prompt draft -------------------------------------------------------
+  // Read the active conversation ID and its saved draft so we can restore it
+  // whenever the user switches tabs.
+  const activeConversationId = useAppStore(
+    (s) =>
+      (s.projects.find((p) => p.id === s.activeProjectId) ?? s.projects[0])
+        ?.activeConversationId ?? "",
+  );
+  const savedDraft = useAppStore(
+    (s) => getActiveConversationFromState(s)?.promptDraft ?? "",
+  );
+
+  // Keep a ref so the tab-switch effect always sees the latest saved draft
+  // without triggering on every keystroke.
+  const savedDraftRef = useRef(savedDraft);
+  savedDraftRef.current = savedDraft;
+
+  useEffect(() => {
+    // Restore the draft for the newly active tab
+    setInput(savedDraftRef.current);
+    setAttachedImages([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId]);
+
+  // ---------------------------------------------------------------------------
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -85,14 +230,16 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   // Auto-focus when a new tab is created
   useEffect(() => {
     const handler = () => {
-      // Small delay so the store state settles before we try to focus
       setTimeout(() => textareaRef.current?.focus(), 30);
     };
     window.addEventListener("slackbuilder:focus-prompt", handler);
     return () => window.removeEventListener("slackbuilder:focus-prompt", handler);
   }, []);
 
-  // Image paste handler
+  // Model capabilities
+  const caps = getModelCapabilities(settings.model);
+
+  // Image paste handler (textarea)
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const items = Array.from(e.clipboardData.items);
@@ -106,7 +253,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
         const reader = new FileReader();
         reader.onload = () => {
           const dataUrl = reader.result as string;
-          // data:image/png;base64,<data>
           const commaIdx = dataUrl.indexOf(",");
           const base64Data = dataUrl.slice(commaIdx + 1);
           setAttachedImages((prev) => [
@@ -128,12 +274,23 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   const removeImage = (id: string) =>
     setAttachedImages((prev) => prev.filter((img) => img.id !== id));
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setInput(val);
+    setPromptDraft(val);
+  };
+
   const inputText = input.trim();
   const canApplyPending =
     Boolean(pendingResponse?.edits.length) && isApplyCommand(inputText);
   const canClearChat = chat.length > 0 || Boolean(pendingResponse);
+
+  // If the model doesn't support vision, disallow image attachment
+  const visionBlocked = attachedImages.length > 0 && !caps.vision;
+
   const canSend =
     !isStreaming &&
+    !visionBlocked &&
     (inputText.length > 0 || attachedImages.length > 0) &&
     (Boolean(settings.apiKey) || canApplyPending);
 
@@ -142,6 +299,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     const userMessage = inputText;
     const imageSnapshot = attachedImages;
     setInput("");
+    setPromptDraft("");
     setAttachedImages([]);
 
     if (pendingResponse?.edits.length && isApplyCommand(userMessage)) {
@@ -183,7 +341,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     const documentAtSend = document;
     const controller = new AbortController();
 
-    // Store the message with image count so the chat history shows it
     startStream(
       projectId,
       conversationId,
@@ -191,6 +348,10 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       userMessage || "(image)",
       imageSnapshot.length || undefined,
     );
+
+    // Token-by-token streaming callback
+    const onToken = (token: string) =>
+      appendAssistantToken(projectId, conversationId, token);
 
     const provider = buildProvider(settings);
     const mrkdwn = tipTapToMrkdwn(documentAtSend);
@@ -208,7 +369,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
         content: msg.content,
       }));
 
-    // Build multi-modal user content if images are attached
     const userContent: string | ContentPart[] =
       imageSnapshot.length > 0
         ? [
@@ -223,7 +383,10 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
           ]
         : userMessage;
 
-    const apiMessages: { role: "system" | "user" | "assistant"; content: string | ContentPart[] }[] = [
+    const apiMessages: {
+      role: "system" | "user" | "assistant";
+      content: string | ContentPart[];
+    }[] = [
       { role: "system" as const, content: SLACK_SYSTEM_PROMPT },
       ...historyMessages,
       { role: "system" as const, content: contextMsg },
@@ -233,6 +396,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     try {
       const full = await provider.streamChat(apiMessages, {
         signal: controller.signal,
+        onToken,
       });
       const parsed = parseAiResponse(full);
       finishStream(projectId, conversationId, parsed);
@@ -251,18 +415,17 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     }
   };
 
-  // "Apply to editor" — brute-force apply an assistant message's text content
-  // directly to the editor when the AI forgot to wrap it in structured edits.
   const handleApplyMessageToEditor = (content: string) => {
     try {
       const newDoc = mrkdwnToTipTap(content);
       acceptEdits({ document: newDoc, editIds: [] });
     } catch {
-      // If parsing fails, wrap content in a paragraph and apply
       acceptEdits({
         document: {
           type: "doc",
-          content: [{ type: "paragraph", content: [{ type: "text", text: content }] }],
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: content }] },
+          ],
         },
         editIds: [],
       });
@@ -326,7 +489,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       {/* Message list */}
       <div
         ref={scrollerRef}
-        className="flex-1 min-h-0 overflow-y-auto app-scrollbar p-3 space-y-3"
+        className="min-h-0 flex-1 overflow-y-auto app-scrollbar p-3 space-y-3"
       >
         {chat.length === 0 && !pendingResponse && (
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-sm">
@@ -340,6 +503,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     type="button"
                     onClick={() => {
                       setInput(p);
+                      setPromptDraft(p);
                       textareaRef.current?.focus();
                     }}
                     className="text-left text-slate-500 hover:text-violet-600 hover:underline transition-colors"
@@ -362,9 +526,17 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                 to enable AI editing.
               </p>
             )}
-            <p className="mt-3 text-slate-400">
-              Tip: paste an image here to analyse it with vision models.
-            </p>
+            {caps.vision ? (
+              <p className="mt-3 text-slate-400">
+                Tip: paste or drag an image to use vision.
+              </p>
+            ) : (
+              <p className="mt-3 rounded-lg bg-slate-50 border border-slate-100 p-2 text-slate-400">
+                <Eye size={10} className="inline mr-1" />
+                Current model doesn&apos;t support images. Switch to a vision
+                model (e.g. GPT-4o) to use image inputs.
+              </p>
+            )}
           </div>
         )}
 
@@ -393,7 +565,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:300ms]" />
                   </span>
                 )}
-                {/* Image count badge */}
                 {msg.role === "user" && (msg.imageCount ?? 0) > 0 && (
                   <div className="mt-1 flex items-center gap-1 text-xs text-violet-200">
                     <ImageIcon size={11} />
@@ -402,7 +573,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     </span>
                   </div>
                 )}
-                {/* Pending edit count badge */}
                 {msg.role === "assistant" && msg.pendingEditCount ? (
                   <div className="mt-1 text-xs text-slate-400">
                     {msg.pendingEditCount} edit
@@ -411,10 +581,6 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                 ) : null}
               </div>
 
-              {/* "Apply to editor" — shown on the last assistant message when
-                  there are no pending edits and it has enough content. This is
-                  the escape hatch for when the AI responds with prose instead
-                  of structured edits. */}
               {msg.role === "assistant" &&
                 isLast &&
                 !pendingResponse &&
@@ -441,6 +607,17 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
 
       {/* Input area */}
       <div className="border-t border-slate-200 bg-white px-3 py-3">
+        {/* Vision-not-supported warning */}
+        {attachedImages.length > 0 && !caps.vision && (
+          <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700">
+            <Eye size={11} />
+            <span>
+              <strong>{settings.model}</strong> doesn&apos;t support images.
+              Switch to a vision model in the model selector below.
+            </span>
+          </div>
+        )}
+
         {/* Attached image previews */}
         {attachedImages.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
@@ -467,61 +644,112 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 shadow-sm transition focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-100">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onPaste={handlePaste}
-            placeholder={
-              attachedImages.length > 0
-                ? "Add a message or send image…"
-                : "Ask the AI anything… (paste an image to use vision)"
-            }
-            rows={1}
-            className="block w-full resize-none rounded-t-2xl bg-transparent px-3.5 py-2.5 text-sm leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
-            onKeyDown={(e) => {
-              if (
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.nativeEvent.isComposing
-              ) {
-                e.preventDefault();
-                handleSend();
+        {/* Rainbow prompt box */}
+        <div className="rainbow-border-wrapper">
+          <div className="rainbow-border-inner">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={handleInputChange}
+              onPaste={handlePaste}
+              placeholder={
+                attachedImages.length > 0
+                  ? "Add a message or send image…"
+                  : "Ask the AI anything…"
               }
-            }}
-          />
-          <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
-            <div className="text-[10px] text-slate-400 pl-1 select-none">
-              Shift+Enter for newline · paste image for vision
+              rows={1}
+              className="block w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+            />
+            <div className="flex items-center justify-between px-2 pb-1.5 pt-0.5">
+              {/* Model selector */}
+              <ModelSelector
+                model={settings.model}
+                provider={settings.provider}
+                onSelect={(m) => setSettings({ model: m })}
+              />
+
+              {/* Image attach button (only if vision supported) */}
+              {caps.vision && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = window.document.createElement("input");
+                    input.type = "file";
+                    input.accept = "image/*";
+                    input.onchange = (e) => {
+                      const file = (e.target as HTMLInputElement).files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        const base64Data = dataUrl.slice(dataUrl.indexOf(",") + 1);
+                        setAttachedImages((prev) => [
+                          ...prev,
+                          {
+                            id: Math.random().toString(36).slice(2),
+                            dataUrl,
+                            mimeType: file.type,
+                            base64Data,
+                          },
+                        ]);
+                      };
+                      reader.readAsDataURL(file);
+                    };
+                    input.click();
+                  }}
+                  className="rounded p-0.5 text-slate-300 hover:text-slate-500 transition-colors"
+                  title="Attach image"
+                >
+                  <ImageIcon size={13} />
+                </button>
+              )}
+
+              {/* Shift+Enter hint */}
+              <div className="flex-1 text-right text-[10px] text-slate-400 pr-1 select-none">
+                {caps.vision
+                  ? "Shift+Enter newline · paste image"
+                  : "Shift+Enter for newline"}
+              </div>
+
+              {/* Send / stop */}
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={cancelStream}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                  title="Stop"
+                  aria-label="Stop"
+                >
+                  <Square size={12} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!canSend}
+                  className={cn(
+                    "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                    canSend
+                      ? "bg-violet-600 text-white hover:bg-violet-700"
+                      : "cursor-not-allowed bg-slate-200 text-slate-400",
+                  )}
+                  title="Send (Enter)"
+                  aria-label="Send"
+                >
+                  <ArrowUp size={14} />
+                </button>
+              )}
             </div>
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={cancelStream}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
-                title="Stop"
-                aria-label="Stop"
-              >
-                <Square size={12} fill="currentColor" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!canSend}
-                className={cn(
-                  "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                  canSend
-                    ? "bg-violet-600 text-white hover:bg-violet-700"
-                    : "cursor-not-allowed bg-slate-200 text-slate-400",
-                )}
-                title="Send (Enter)"
-                aria-label="Send"
-              >
-                <ArrowUp size={14} />
-              </button>
-            )}
           </div>
         </div>
       </div>

@@ -4,7 +4,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
-import { SlackImage } from "./extensions/SlackImage";
+import { SlackImage } from "./extensions/SlackImage.tsx";
 import { SlackLinkUnfurl } from "./extensions/SlackLinkUnfurl";
 
 interface SlackEditorProps {
@@ -53,13 +53,39 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
           "slack-message app-scrollbar prose-none focus:outline-none px-6 py-4 min-h-full",
       },
       handlePaste(_view, event) {
-        const text = event.clipboardData?.getData("text/plain") ?? "";
+        const clipData = event.clipboardData;
+        if (!clipData) return false;
+
+        // 1. Clipboard image (e.g. from snipping tool / screenshots)
+        const items = Array.from(clipData.items);
+        const imageItem = items.find((item) => item.type.startsWith("image/"));
+        if (imageItem) {
+          const file = imageItem.getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const src = String(reader.result ?? "");
+              editor
+                ?.chain()
+                .focus()
+                .insertSlackImage({ src, alt: "pasted image" })
+                .run();
+            };
+            reader.readAsDataURL(file);
+            event.preventDefault();
+            return true;
+          }
+        }
+
+        // 2. Plain-text URL → image or link-unfurl
+        const text = clipData.getData("text/plain") ?? "";
         const trimmed = text.trim();
         if (trimmed && URL_REGEX.test(trimmed)) {
           insertLinkOrImage(editor, trimmed);
           event.preventDefault();
           return true;
         }
+
         return false;
       },
       handleDrop(_view, event) {
@@ -70,7 +96,11 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
             const reader = new FileReader();
             reader.onload = () => {
               const src = String(reader.result ?? "");
-              editor?.chain().focus().insertSlackImage({ src, alt: file.name }).run();
+              editor
+                ?.chain()
+                .focus()
+                .insertSlackImage({ src, alt: file.name })
+                .run();
             };
             reader.readAsDataURL(file);
             event.preventDefault();
@@ -104,7 +134,7 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
   }, [document, editor]);
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-white">
+    <div className="min-h-0 flex-1 overflow-y-auto bg-white">
       <EditorContent editor={editor} />
     </div>
   );

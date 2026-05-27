@@ -41,6 +41,7 @@ export interface Conversation {
   history: AiHistoryEntry[];
   redoStack: AiHistoryEntry[];
   isStreaming: boolean;
+  promptDraft: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -90,7 +91,12 @@ export interface AppState {
     userMessage: string,
     imageCount?: number,
   ) => void;
-  appendAssistantToken: (token: string) => void;
+  /** Append a streaming token to a specific conversation (supports cross-tab streaming). */
+  appendAssistantToken: (
+    projectId: string,
+    conversationId: string,
+    token: string,
+  ) => void;
   finishStream: (
     projectId: string,
     conversationId: string,
@@ -105,6 +111,7 @@ export interface AppState {
   revertLastAiChange: () => void;
   redoLastAiChange: () => void;
   resetMessage: () => void;
+  setPromptDraft: (draft: string) => void;
   hydrate: (snapshot: Partial<AppState>) => void;
 }
 
@@ -118,6 +125,7 @@ const DEFAULT_SETTINGS: AiProviderSettings = {
   apiKey: "",
   model: PROVIDERS.openai.defaultModel,
   baseUrl: PROVIDERS.openai.defaultBaseUrl,
+  theme: "light",
 };
 
 type ActiveConversationPatch = Partial<
@@ -131,6 +139,7 @@ type ActiveConversationPatch = Partial<
     | "history"
     | "redoStack"
     | "isStreaming"
+    | "promptDraft"
   >
 >;
 
@@ -153,6 +162,7 @@ function createConversation(
     history: [],
     redoStack: [],
     isStreaming: false,
+    promptDraft: "",
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -357,9 +367,15 @@ function normalizeProjects(
   }
 
   return projects.map((project, projectIndex) => {
-    const conversations = project.conversations?.length
-      ? project.conversations
-      : [createConversation("Untitled 1")];
+    const conversations = (
+      project.conversations?.length
+        ? project.conversations
+        : [createConversation("Untitled 1")]
+    ).map((conv) => ({
+      ...conv,
+      promptDraft: conv.promptDraft ?? "",
+      isStreaming: conv.isStreaming ?? false,
+    }));
     const activeConversation =
       conversations.find((item) => item.id === project.activeConversationId) ??
       conversations[0];
@@ -367,10 +383,7 @@ function normalizeProjects(
     return {
       ...project,
       name: project.name || `Project ${projectIndex + 1}`,
-      conversations: conversations.map((item) => ({
-        ...item,
-        isStreaming: item.isStreaming ?? false,
-      })),
+      conversations,
       activeConversationId: activeConversation.id,
     };
   });
@@ -700,16 +713,31 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  appendAssistantToken: (token) =>
+  appendAssistantToken: (projectId, conversationId, token) =>
     set((state) => {
-      const last = state.chat[state.chat.length - 1];
+      const project = state.projects.find((p) => p.id === projectId);
+      if (!project) return state;
+      const conversation = project.conversations.find(
+        (c) => c.id === conversationId,
+      );
+      if (!conversation) return state;
+
+      // Use the live chat from top-level state if this is the active conversation
+      // (avoids stale reads from project tree during rapid updates)
+      const isActive =
+        state.activeProjectId === projectId &&
+        project.activeConversationId === conversationId;
+      const chat = isActive ? state.chat : conversation.chat;
+
+      const last = chat[chat.length - 1];
       if (!last || last.role !== "assistant") return state;
+
       const updated: ChatMessage = {
         ...last,
         content: last.content + token,
       };
-      return updateActiveConversation(state, {
-        chat: [...state.chat.slice(0, -1), updated],
+      return updateConversationById(state, projectId, conversationId, {
+        chat: [...chat.slice(0, -1), updated],
       });
     }),
 
@@ -855,6 +883,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     ),
 
+  setPromptDraft: (draft) =>
+    set((state) => {
+      const { projects, activeProjectId } = state;
+      const project =
+        projects.find((p) => p.id === activeProjectId) ?? projects[0];
+      if (!project) return {};
+      const conversation =
+        project.conversations.find(
+          (c) => c.id === project.activeConversationId,
+        ) ?? project.conversations[0];
+      if (!conversation) return {};
+
+      const updatedConversation = { ...conversation, promptDraft: draft };
+      const updatedProject = {
+        ...project,
+        conversations: project.conversations.map((c) =>
+          c.id === conversation.id ? updatedConversation : c,
+        ),
+      };
+
+      return {
+        projects: projects.map((p) =>
+          p.id === updatedProject.id ? updatedProject : p,
+        ),
+      };
+    }),
+
   hydrate: (snapshot) => {
     abortAllStreams();
     set((state) => {
@@ -876,7 +931,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       return {
         ...state,
-        settings: snapshot.settings ?? state.settings,
+        settings: { ...DEFAULT_SETTINGS, ...(snapshot.settings ?? {}) },
         ui: snapshot.ui ?? state.ui,
         projects,
         activeProjectId: activeProject?.id ?? projects[0].id,

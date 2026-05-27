@@ -204,3 +204,186 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ===========================================================================
+   Rainbow gradient border for the AI prompt box
+   =========================================================================== */
+@keyframes rainbow-shift {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+
+.rainbow-border-wrapper {
+  border-radius: 1rem; /* rounded-2xl = 16px */
+  padding: 2px;
+  background: linear-gradient(
+    135deg,
+    #ff6b6b,
+    #feca57,
+    #48dbfb,
+    #ff9ff3,
+    #54a0ff,
+    #7c3aed,
+    #ff6b6b
+  );
+  background-size: 400% 400%;
+  animation: rainbow-shift 4s ease infinite;
+}
+
+.rainbow-border-inner {
+  border-radius: 14px; /* 16px - 2px padding */
+  background: white;
+  overflow: hidden;
+}
+
+/* ===========================================================================
+   Custom titlebar
+   =========================================================================== */
+
+/* Prevent text selection during window drag */
+.titlebar,
+[data-tauri-drag-region] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Close button gets a slightly rounded inner corner only (top-right of the bar) */
+.titlebar-close {
+  border-radius: 0;
+}
+
+/* ===========================================================================
+   Dark theme
+   Toggled by adding `class="dark"` to <html>. We use higher-specificity
+   selectors so these rules beat Tailwind's utility classes without !important.
+   =========================================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #111214;
+  color: #e8e9ea;
+}
+
+/* Surfaces */
+html.dark .bg-white       { background-color: #1e2124; }
+html.dark .bg-slate-50    { background-color: #18191c; }
+html.dark .bg-slate-100   { background-color: #2b2d31; }
+
+/* Semi-transparent tabs bar */
+html.dark .bg-slate-100\/80 { background-color: rgba(43, 45, 49, 0.9); }
+
+/* Borders */
+html.dark .border-slate-200 { border-color: #3b3d41; }
+html.dark .border-b.border-slate-200 { border-color: #3b3d41; }
+html.dark .ring-slate-100 { --tw-ring-color: #3b3d41; }
+html.dark .ring-slate-200 { --tw-ring-color: #3b3d41; }
+
+/* Text */
+html.dark .text-slate-900  { color: #f2f3f5; }
+html.dark .text-slate-800  { color: #dbdee1; }
+html.dark .text-slate-700  { color: #b5bac1; }
+html.dark .text-slate-600  { color: #949ba4; }
+html.dark .text-slate-500  { color: #80848e; }
+html.dark .text-slate-400  { color: #6d6f78; }
+
+/* Hover states */
+html.dark .hover\:bg-slate-100:hover   { background-color: #313338; }
+html.dark .hover\:bg-slate-50:hover    { background-color: #2b2d31; }
+html.dark .hover\:bg-white\/60:hover   { background-color: rgba(49, 51, 56, 0.6); }
+
+/* Active tab */
+html.dark .border-b-white { border-bottom-color: #1e2124; }
+
+/* Inputs + selects + textareas */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: #2b2d31;
+  border-color: #3b3d41;
+  color: #dbdee1;
+}
+
+html.dark input::placeholder,
+html.dark textarea::placeholder {
+  color: #6d6f78;
+}
+
+/* Editor */
+html.dark .slack-message {
+  color: #dbdee1;
+}
+html.dark .slack-message code {
+  background-color: #2b2d31;
+  border-color: #3b3d41;
+  color: #f47067;
+}
+html.dark .slack-message pre {
+  background-color: #2b2d31;
+  border-color: #3b3d41;
+  color: #dbdee1;
+}
+html.dark .slack-message blockquote {
+  border-left-color: #3b3d41;
+  color: #949ba4;
+}
+html.dark .slack-message .slack-link-unfurl {
+  background-color: #2b2d31;
+  border-left-color: #3b3d41;
+}
+
+/* Chat bubbles */
+html.dark .bg-white.shadow-sm.ring-1 {
+  background-color: #2b2d31;
+  color: #dbdee1;
+}
+
+/* Code block toolbar and misc white-bg panels */
+html.dark .bg-white.p-4,
+html.dark .bg-white.p-5 {
+  background-color: #2b2d31;
+}
+
+/* Rainbow border inner in dark mode */
+html.dark .rainbow-border-inner {
+  background: #1e2124;
+}
+
+/* Placeholder in dark mode TipTap */
+html.dark .slack-message .is-editor-empty:first-child::before {
+  color: #6d6f78;
+}
+
+/* Scrollbar in dark mode */
+html.dark .app-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+html.dark .app-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Titlebar window controls in dark mode */
+html.dark .titlebar { background-color: #1e2124; border-bottom-color: #3b3d41; }
+html.dark .titlebar [data-tauri-drag-region] .w-px { background-color: #3b3d41; }
+html.dark .titlebar button:not(.titlebar-close):hover { background-color: #313338; color: #dbdee1; }
+
+/* Modal overlays */
+html.dark .bg-white.rounded-xl {
+  background-color: #2b2d31;
+}
+html.dark .bg-white.rounded-xl input,
+html.dark .bg-white.rounded-xl select {
+  background-color: #1e2124;
+  border-color: #3b3d41;
+  color: #dbdee1;
+}
+
+/* Amber/info banners — keep readable */
+html.dark .bg-amber-50 { background-color: #3d2e1a; }
+html.dark .text-amber-800 { color: #fbbf24; }
+
+/* Slate-900 button (Copy to Slack) — keep dark */
+html.dark .bg-slate-900 { background-color: #111214; }
+html.dark .hover\:bg-slate-800:hover { background-color: #1e2124; }
