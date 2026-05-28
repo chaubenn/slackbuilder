@@ -22,7 +22,10 @@ Flow is someone fixes a ticket in Backlog -> Move ticket to QA -> Ping someone t
 - expected: price of bitcoin is at the bottom, however right now changes are always going to the top (whenever I say, add to bottom, it almost always doesnt add it to the bottom)
 
 ### Improvement - cancelling prompts
-- right now, when you run a prompt, and cancel it, the response is (cancelled), instead, make it so that the user's prompt goes back into the promptbox, and they are able to edit the prompt to rerun again 
+- right now, when you run a prompt, and cancel it, the response is (cancelled), instead, make it so that the user's prompt goes back into the promptbox, and they are able to edit the prompt to rerun again
+
+### Improvement - copy to slack button 
+- for visibility of system status, show the user that they copied the editor content to clipboard or something -- it doesnt have any animation or visibility to the user//clicking the button currently gives no feedback (although it does copy to clipboard correctly, just style it to show like 'copied') 
 
 
 ## QA 
