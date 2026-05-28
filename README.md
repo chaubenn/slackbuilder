@@ -52,16 +52,18 @@ The TipTap JSON document is the source of truth per tab. `content` (Slack mrkdwn
 
 Per [Slack formatting docs](https://docs.slack.dev/messaging/formatting-message-text):
 
-| Mark | Slack mrkdwn |
-|------|----------------|
-| Bold | `*bold*` |
-| Italic | `_italic_` |
-| Strikethrough | `~strike~` |
-| Inline code | `` `code` `` |
-| Code block | ` ```code``` ` |
-| Block quote | `> line` |
-| Link | `<url>` or `<url\|label>` |
-| Escape | `&` `<` `>` → `&amp;` `&lt;` `&gt;` |
+
+| Mark          | Slack mrkdwn              |
+| ------------- | ------------------------- |
+| Bold          | `*bold*`                  |
+| Italic        | `_italic_`                |
+| Strikethrough | `~strike~`                |
+| Inline code   | ``code``                  |
+| Code block    | ````code````              |
+| Block quote   | `> line`                  |
+| Link          | `<url>` or `<url|label>`  |
+| Escape        | `&` `<` `>` → `&` `<` `>` |
+
 
 The system prompt enforces these rules; `validateMrkdwn` auto-fixes common model mistakes (`**bold**`, `~~strike~~`, `[label](url)`, ATX headings) before applying edits.
 
@@ -70,6 +72,8 @@ The system prompt enforces these rules; `validateMrkdwn` auto-fixes common model
 **Prerequisites:** Node 18+, Rust stable, and [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
 
 ```bash
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh
+source "$HOME/.cargo/env" # follow steps to download Rust 
 npm install
 npm run tauri dev          # desktop app
 npm run test               # Vitest
@@ -88,11 +92,13 @@ npm run tauri build
 1. Open **Settings** (gear in the AI panel) and add an API key for at least one provider.
 2. Pick **provider + model** from the dropdown in the chat footer, or set a custom model / base URL in Settings.
 
-| Provider | Default base URL | Default model |
-|----------|------------------|---------------|
-| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
-| Anthropic | `https://api.anthropic.com/v1` | `claude-sonnet-4-6` |
+
+| Provider   | Default base URL               | Default model                 |
+| ---------- | ------------------------------ | ----------------------------- |
+| OpenAI     | `https://api.openai.com/v1`    | `gpt-4o-mini`                 |
+| Anthropic  | `https://api.anthropic.com/v1` | `claude-sonnet-4-6`           |
 | OpenRouter | `https://openrouter.ai/api/v1` | `anthropic/claude-3.5-sonnet` |
+
 
 The Anthropic adapter sets `anthropic-dangerous-direct-browser-access: true` so requests work from Tauri's webview without a proxy.
 
@@ -111,12 +117,14 @@ Without Tauri (e.g. Vite-only in a browser), the app falls back to plain mrkdwn 
 
 ## Testing
 
-| Area | Location |
-|------|----------|
-| mrkdwn serialise / parse / blocks | `src/lib/slack/*.test.ts` |
-| AI parse + apply | `src/lib/ai/*.test.ts`, `src/features/ai/applyCommand.test.ts` |
-| Store (tabs, streaming, history) | `src/store/*.test.ts` |
-| Clipboard Pickle round-trip | `src-tauri/src/clipboard.rs` (`#[cfg(test)]`) |
+
+| Area                              | Location                                                       |
+| --------------------------------- | -------------------------------------------------------------- |
+| mrkdwn serialise / parse / blocks | `src/lib/slack/*.test.ts`                                      |
+| AI parse + apply                  | `src/lib/ai/*.test.ts`, `src/features/ai/applyCommand.test.ts` |
+| Store (tabs, streaming, history)  | `src/store/*.test.ts`                                          |
+| Clipboard Pickle round-trip       | `src-tauri/src/clipboard.rs` (`#[cfg(test)]`)                  |
+
 
 ```bash
 npm run test
@@ -125,18 +133,20 @@ npm run test:watch   # watch mode
 
 ## Keyboard shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| Cmd/Ctrl+T | New tab (focuses AI prompt) |
-| Cmd/Ctrl+W | Close current tab |
-| Cmd/Ctrl+1–9 | Switch to tab N |
-| Cmd/Ctrl+Shift+C | Copy to Slack |
-| Enter | Send AI message |
-| Shift+Enter | Newline in AI input |
+
+| Shortcut         | Action                      |
+| ---------------- | --------------------------- |
+| Cmd/Ctrl+T       | New tab (focuses AI prompt) |
+| Cmd/Ctrl+W       | Close current tab           |
+| Cmd/Ctrl+1–9     | Switch to tab N             |
+| Cmd/Ctrl+Shift+C | Copy to Slack               |
+| Enter            | Send AI message             |
+| Shift+Enter      | Newline in AI input         |
+
 
 ## Contributing / roadmap
 
-Team backlog and QA flow live in [`ISSUES.md`](./ISSUES.md) (kanban-style: Backlog → QA → Done).
+Team backlog and QA flow live in `[ISSUES.md](./ISSUES.md)` (kanban-style: Backlog → QA → Done).
 
 Known gaps tracked there include: insert-position accuracy for bottom-of-message edits, restoring the prompt after cancel, local model support, and web search.
 
@@ -146,3 +156,4 @@ Known gaps tracked there include: insert-position accuracy for bottom-of-message
 - `read_slack_clipboard` exists in Rust but is not wired in the UI yet (paste-from-Slack).
 - OpenRouter: choose a vision-capable model explicitly when sending images (e.g. `openai/gpt-4o`).
 - macOS DMG window background / icon layout is configurable at build time via `bundle.macOS.dmg` in `src-tauri/tauri.conf.json` (only affects release bundles, not `tauri dev`).
+
