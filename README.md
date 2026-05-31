@@ -118,26 +118,36 @@ Per [Slack formatting docs](https://docs.slack.dev/messaging/formatting-message-
 | Link          | `<url>` or `<url\|label>` |
 | Escape        | `&` `<` `>` → entities    |
 
-## Running
+## Download
 
-**Prerequisites:** Node 18+, Rust stable, [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+Most users should install Slackbuilder from the latest GitHub release:
+
+1. Go to **Releases** on this repository.
+2. Download the installer for your platform:
+   - **macOS:** `.dmg`
+   - **Windows:** `.exe`
+3. Open the installer and launch Slackbuilder.
+
+## Running locally
+
+Use this if you want to develop Slackbuilder or run it from source.
+
+**Prerequisites:** Node 18+, Rust stable, and [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
 
 ```bash
 npm install
-npm run tauri dev          # desktop app (recommended)
+npm run tauri dev
 ```
 
-Release:
+Build local release artifacts:
 
 ```bash
 npm test
 npm run build
 npm run tauri build
-# macOS DMG: src-tauri/target/release/bundle/dmg/
 ```
 
-For a tagged release, verify the generated app, commit the versioned changes, tag
-`v1.0.0`, push the branch and tag, then attach the DMG to a GitHub release.
+Generated installers are written under `src-tauri/target/release/bundle/`, including `dmg/` on macOS and Windows installer folders such as `nsis/` or `msi/` on Windows.
 
 ## Keyboard shortcuts
 
