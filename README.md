@@ -13,6 +13,37 @@ Slackbuilder is a local **Tauri 2** desktop app. The center of the product is th
 2. **Refine with AI** — describe changes in natural language; the model returns structured edits (insert, replace, move, delete) you review before applying. **Ask mode** answers questions about the draft without touching the editor.
 3. **Copy to Slack** — toolbar button or shortcut writes `slack/texty` via Rust so Slack desktop reconstructs formatting on paste.
 
+## Download
+
+Most users should install Slackbuilder from the latest GitHub release:
+
+1. Go to **Releases** on this repository.
+2. Download the installer for your platform:
+   - **macOS:** `.dmg`
+   - **Windows:** `.exe`
+3. Open the installer and launch Slackbuilder.
+
+## Running locally
+
+Use this if you want to develop Slackbuilder or run it from source.
+
+**Prerequisites:** Node 18+, Rust stable, and [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Build local release artifacts:
+
+```bash
+npm test
+npm run build
+npm run tauri build
+```
+
+Generated installers are written under `src-tauri/target/release/bundle/`, including `dmg/` on macOS and Windows installer folders such as `nsis/` or `msi/` on Windows.
+
 ## Why Slackbuilder
 
 | You want… | Slackbuilder gives you… |
@@ -117,37 +148,6 @@ Per [Slack formatting docs](https://docs.slack.dev/messaging/formatting-message-
 | Block quote   | `> line`                  |
 | Link          | `<url>` or `<url\|label>` |
 | Escape        | `&` `<` `>` → entities    |
-
-## Download
-
-Most users should install Slackbuilder from the latest GitHub release:
-
-1. Go to **Releases** on this repository.
-2. Download the installer for your platform:
-   - **macOS:** `.dmg`
-   - **Windows:** `.exe`
-3. Open the installer and launch Slackbuilder.
-
-## Running locally
-
-Use this if you want to develop Slackbuilder or run it from source.
-
-**Prerequisites:** Node 18+, Rust stable, and [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS.
-
-```bash
-npm install
-npm run tauri dev
-```
-
-Build local release artifacts:
-
-```bash
-npm test
-npm run build
-npm run tauri build
-```
-
-Generated installers are written under `src-tauri/target/release/bundle/`, including `dmg/` on macOS and Windows installer folders such as `nsis/` or `msi/` on Windows.
 
 ## Keyboard shortcuts
 
