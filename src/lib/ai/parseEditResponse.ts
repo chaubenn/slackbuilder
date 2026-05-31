@@ -5,6 +5,8 @@ interface RawEdit {
   id?: string;
   type?: string;
   target?: unknown;
+  source?: unknown;
+  destination?: unknown;
   content?: string;
   rationale?: string;
 }
@@ -90,7 +92,7 @@ export function parseAiResponse(raw: string): AiEditResponse {
 }
 
 function isUsableTarget(target: unknown): boolean {
-  if (typeof target === "string") return /^(text|image|link)-/.test(target);
+  if (typeof target === "string") return /^(text|code|image|link)-/.test(target);
   if (target && typeof target === "object") {
     const t = target as { start?: unknown; end?: unknown };
     return typeof t.start === "number" && typeof t.end === "number";
@@ -117,6 +119,23 @@ function humanizeFallback(raw: string): string {
     .trim();
 }
 
+function parseTarget(value: unknown): StructuredEdit["target"] | null {
+  if (typeof value === "string") {
+    if (!/^(text|code|image|link)-/.test(value)) return null;
+    return value;
+  }
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof (value as { start?: number }).start === "number" &&
+    typeof (value as { end?: number }).end === "number"
+  ) {
+    const t = value as { start: number; end: number };
+    return { start: t.start, end: t.end };
+  }
+  return null;
+}
+
 function normalizeEdit(e: RawEdit): StructuredEdit | null {
   if (!e || typeof e !== "object") return null;
   const type = e.type;
@@ -124,26 +143,28 @@ function normalizeEdit(e: RawEdit): StructuredEdit | null {
     type !== "replace" &&
     type !== "insert" &&
     type !== "delete" &&
-    type !== "rewrite_section"
+    type !== "rewrite_section" &&
+    type !== "move"
   ) {
     return null;
   }
 
-  let target: StructuredEdit["target"];
-  if (typeof e.target === "string") {
-    if (!/^(text|image|link)-/.test(e.target)) return null;
-    target = e.target;
-  } else if (
-    e.target &&
-    typeof e.target === "object" &&
-    typeof (e.target as { start?: number }).start === "number" &&
-    typeof (e.target as { end?: number }).end === "number"
-  ) {
-    const t = e.target as { start: number; end: number };
-    target = { start: t.start, end: t.end };
-  } else {
-    return null;
+  if (type === "move") {
+    const target = parseTarget(e.source ?? e.target);
+    const destination = parseTarget(e.destination);
+    if (!target || !destination) return null;
+    return {
+      id: e.id || `edit-${nanoid(6)}`,
+      type: "move",
+      target,
+      destination,
+      content: typeof e.content === "string" ? e.content : undefined,
+      rationale: typeof e.rationale === "string" ? e.rationale : undefined,
+    };
   }
+
+  const target = parseTarget(e.target);
+  if (!target) return null;
 
   return {
     id: e.id || `edit-${nanoid(6)}`,
@@ -202,4 +223,26 @@ function stripJsonBlock(text: string): string {
   let stripped = text;
   if (block) stripped = stripped.replace(block, "");
   return stripped.replace(/```json/gi, "").replace(/```/g, "").trim();
+}
+
+/** Parse a plain chat reply (Ask mode). Never returns pending edits. */
+export function parseAskResponse(raw: string): AiEditResponse {
+  const block = extractJsonBlock(raw);
+  if (block) {
+    try {
+      const parsed = JSON.parse(block) as { assistantMessage?: string };
+      const msg = parsed.assistantMessage?.trim();
+      if (msg) {
+        return { assistantMessage: msg, edits: [] };
+      }
+    } catch {
+      /* model returned JSON-shaped text without valid parse — fall through */
+    }
+  }
+
+  const text = humanizeFallback(stripJsonBlock(raw)) || raw.trim();
+  return {
+    assistantMessage: text || "(no response)",
+    edits: [],
+  };
 }

@@ -12,6 +12,7 @@ import {
   Link as LinkIcon,
   Image as ImageIcon,
   Copy,
+  Check,
   Undo2,
   Redo2,
 } from "lucide-react";
@@ -21,6 +22,7 @@ interface ToolbarProps {
   editor: Editor | null;
   onCopy: () => void;
   isCopying: boolean;
+  copyFeedback?: "idle" | "copied" | "error";
 }
 
 interface ButtonProps {
@@ -53,7 +55,12 @@ function Separator() {
   return <div className="mx-0.5 h-4 w-px bg-slate-200" />;
 }
 
-export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
+export function EditorToolbar({
+  editor,
+  onCopy,
+  isCopying,
+  copyFeedback = "idle",
+}: ToolbarProps) {
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
   const [, forceTick] = useState(0);
   const imageFileRef = useRef<HTMLInputElement>(null);
@@ -206,13 +213,30 @@ export function EditorToolbar({ editor, onCopy, isCopying }: ToolbarProps) {
         onClick={onCopy}
         disabled={isCopying}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-slate-800",
-          isCopying && "opacity-60 cursor-wait",
+          "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition-all duration-200",
+          copyFeedback === "copied" &&
+            "bg-emerald-600 text-white hover:bg-emerald-600",
+          copyFeedback === "error" &&
+            "bg-red-600 text-white hover:bg-red-600",
+          copyFeedback === "idle" &&
+            "bg-slate-900 text-white hover:bg-slate-800",
+          isCopying && "cursor-wait opacity-70",
         )}
         title="Copy to Slack (Cmd+Shift+C)"
+        aria-live="polite"
       >
-        <Copy size={13} />
-        {isCopying ? "Copying…" : "Copy to Slack"}
+        {copyFeedback === "copied" ? (
+          <Check size={13} className="shrink-0" />
+        ) : (
+          <Copy size={13} className="shrink-0" />
+        )}
+        {isCopying
+          ? "Copying…"
+          : copyFeedback === "copied"
+            ? "Copied!"
+            : copyFeedback === "error"
+              ? "Copy failed"
+              : "Copy to Slack"}
       </button>
     </div>
   );

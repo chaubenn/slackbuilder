@@ -298,6 +298,12 @@ html.dark .hover\:bg-white\/60:hover   { background-color: rgba(49, 51, 56, 0.6)
 html.dark .border-b-white { border-bottom-color: #1e2124; }
 
 /* Inputs + selects + textareas */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+}
+
 html.dark input,
 html.dark textarea,
 html.dark select {

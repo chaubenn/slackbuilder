@@ -22,8 +22,12 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [copying, setCopying] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const statusTimer = useRef<number | null>(null);
+  const copyFeedbackTimer = useRef<number | null>(null);
 
   // Apply theme to <html> element so dark: CSS overrides work globally.
   useEffect(() => {
@@ -50,14 +54,31 @@ function App() {
   const handleCopy = async () => {
     if (copying) return;
     setCopying(true);
+    setCopyFeedback("idle");
     try {
       const result = await copyMessageToSlack(document);
+      setCopyFeedback("copied");
+      if (copyFeedbackTimer.current) {
+        window.clearTimeout(copyFeedbackTimer.current);
+      }
+      copyFeedbackTimer.current = window.setTimeout(
+        () => setCopyFeedback("idle"),
+        2000,
+      );
       showStatus(
         result.usedNative
-          ? "Copied to Slack clipboard ✓"
-          : "Copied as mrkdwn (fallback) ✓",
+          ? "Copied to Slack clipboard"
+          : "Copied as mrkdwn (fallback)",
       );
     } catch (err) {
+      setCopyFeedback("error");
+      if (copyFeedbackTimer.current) {
+        window.clearTimeout(copyFeedbackTimer.current);
+      }
+      copyFeedbackTimer.current = window.setTimeout(
+        () => setCopyFeedback("idle"),
+        2500,
+      );
       showStatus(`Copy failed: ${(err as Error).message}`);
     } finally {
       setCopying(false);
@@ -100,6 +121,7 @@ function App() {
               editor={editor}
               onCopy={handleCopy}
               isCopying={copying}
+              copyFeedback={copyFeedback}
             />
             <SlackEditor
               document={document}

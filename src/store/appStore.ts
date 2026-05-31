@@ -42,6 +42,8 @@ export interface Conversation {
   redoStack: AiHistoryEntry[];
   isStreaming: boolean;
   promptDraft: string;
+  /** User message for the in-flight turn; restored to the prompt box on cancel. */
+  pendingStreamUserMessage?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -102,7 +104,8 @@ export interface AppState {
     conversationId: string,
     response: AiEditResponse,
   ) => void;
-  cancelStream: () => void;
+  /** Abort streaming and roll back the in-flight user/assistant turn. Returns text to restore in the prompt. */
+  cancelStream: () => string;
   toggleEditSelected: (id: string) => void;
   setAllEditsSelected: (selected: boolean) => void;
   acceptEdits: (result: { document: JSONContent; editIds: string[] }) => void;
@@ -126,6 +129,8 @@ const DEFAULT_SETTINGS: AiProviderSettings = {
   model: PROVIDERS.openai.defaultModel,
   baseUrl: PROVIDERS.openai.defaultBaseUrl,
   theme: "light",
+  webSearchEnabled: false,
+  chatMode: "edit",
 };
 
 type ActiveConversationPatch = Partial<
@@ -140,6 +145,7 @@ type ActiveConversationPatch = Partial<
     | "redoStack"
     | "isStreaming"
     | "promptDraft"
+    | "pendingStreamUserMessage"
   >
 >;
 
@@ -397,6 +403,20 @@ function clearStreamingFlags(projects: Project[]): Project[] {
       isStreaming: false,
     })),
   }));
+}
+
+function stripInflightTurn(chat: ChatMessage[]): ChatMessage[] {
+  if (chat.length < 2) return chat;
+  const last = chat[chat.length - 1];
+  const prev = chat[chat.length - 2];
+  if (last.role === "assistant" && prev.role === "user") {
+    return chat.slice(0, -2);
+  }
+  return chat;
+}
+
+function promptTextFromStreamMessage(message: string): string {
+  return message === "(image)" ? "" : message;
 }
 
 function titleFromMessage(message: string): string {
@@ -698,6 +718,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           : conversation.title,
         pendingResponse: null,
         pendingSelectedEditIds: {},
+        pendingStreamUserMessage: userMessage,
         chat: [
           ...baseChat,
           {
@@ -770,14 +791,18 @@ export const useAppStore = create<AppState>((set, get) => ({
           ? [...chat.slice(0, -1), replaced]
           : [...chat, replaced];
 
+      const hasEdits = response.edits.length > 0;
       const selected: Record<string, boolean> = {};
-      response.edits.forEach((e) => (selected[e.id] = true));
+      if (hasEdits) {
+        response.edits.forEach((e) => (selected[e.id] = true));
+      }
 
       return updateConversationById(state, projectId, conversationId, {
         chat: newChat,
-        pendingResponse: response,
+        pendingResponse: hasEdits ? response : null,
         pendingSelectedEditIds: selected,
         isStreaming: false,
+        pendingStreamUserMessage: undefined,
       });
     });
   },
@@ -786,13 +811,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     const state = get();
     const project = getActiveProject(state.projects, state.activeProjectId);
     const conversation = getActiveConversation(project);
-    if (!project || !conversation) return;
+    if (!project || !conversation) return "";
     abortStream(project.id, conversation.id);
+
+    const liveChat =
+      state.activeProjectId === project.id &&
+      project.activeConversationId === conversation.id
+        ? state.chat
+        : conversation.chat;
+    const restored = promptTextFromStreamMessage(
+      conversation.pendingStreamUserMessage ?? "",
+    );
+
     set((current) =>
       updateConversationById(current, project.id, conversation.id, {
+        chat: stripInflightTurn(liveChat),
         isStreaming: false,
+        promptDraft: restored,
+        pendingStreamUserMessage: undefined,
       }),
     );
+
+    return restored;
   },
 
   toggleEditSelected: (id) =>

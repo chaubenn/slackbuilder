@@ -1,32 +1,23 @@
 // Derive the high-level `blocks` view of a TipTap document for AI targeting.
+// Each top-level node (paragraph, code block, etc.) becomes its own block so
+// targeting text-1 does not mean "the entire message".
 
 import type { JSONContent } from "@tiptap/react";
 import type { MessageBlock } from "./types";
 import { tipTapToMrkdwn } from "./tipTapToMrkdwn";
 
+function serializeNode(node: JSONContent): string {
+  return tipTapToMrkdwn({ type: "doc", content: [node] }).trim();
+}
+
 export function tipTapToBlocks(doc: JSONContent | null | undefined): MessageBlock[] {
   if (!doc?.content) return [];
   const blocks: MessageBlock[] = [];
-  let textBuffer: JSONContent[] = [];
   let textCounter = 1;
-
-  const flushText = () => {
-    if (textBuffer.length === 0) return;
-    const fragmentDoc: JSONContent = { type: "doc", content: textBuffer };
-    const content = tipTapToMrkdwn(fragmentDoc).trim();
-    if (content) {
-      blocks.push({
-        type: "text",
-        blockId: `text-${textCounter++}`,
-        content,
-      });
-    }
-    textBuffer = [];
-  };
+  let codeCounter = 1;
 
   for (const node of doc.content) {
     if (node.type === "slackImage") {
-      flushText();
       blocks.push({
         type: "image",
         blockId: (node.attrs?.blockId as string) ?? `image-${blocks.length + 1}`,
@@ -34,7 +25,6 @@ export function tipTapToBlocks(doc: JSONContent | null | undefined): MessageBloc
         alt: node.attrs?.alt as string | undefined,
       });
     } else if (node.type === "slackLinkUnfurl") {
-      flushText();
       blocks.push({
         type: "link",
         blockId:
@@ -43,11 +33,26 @@ export function tipTapToBlocks(doc: JSONContent | null | undefined): MessageBloc
         title: node.attrs?.title as string | undefined,
         description: node.attrs?.description as string | undefined,
       });
+    } else if (node.type === "codeBlock") {
+      const content = serializeNode(node);
+      if (content) {
+        blocks.push({
+          type: "code",
+          blockId: `code-${codeCounter++}`,
+          content,
+        });
+      }
     } else {
-      textBuffer.push(node);
+      const content = serializeNode(node);
+      if (content) {
+        blocks.push({
+          type: "text",
+          blockId: `text-${textCounter++}`,
+          content,
+        });
+      }
     }
   }
 
-  flushText();
   return blocks;
 }

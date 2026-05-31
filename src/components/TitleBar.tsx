@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Minus, Maximize2, Minimize2, X } from "lucide-react";
+import slackbuilderMark from "../assets/slackbuilder-mark.png";
 
 // Detect Tauri environment at module init — safe to read synchronously.
 const IS_TAURI =
@@ -68,30 +69,20 @@ export function TitleBar({ status }: TitleBarProps) {
       <div
         data-tauri-drag-region
         onDoubleClick={IS_TAURI ? toggleMaximize : undefined}
-        className="flex flex-1 items-center gap-2.5 overflow-hidden px-3"
+        className="flex flex-1 items-center gap-1.5 overflow-hidden px-3"
       >
         {/* Logo mark */}
-        <div className="flex h-[17px] w-[17px] shrink-0 items-center justify-center rounded-[4px] bg-violet-600 pointer-events-none">
-          <svg
-            width="9"
-            height="9"
-            viewBox="0 0 12 12"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M2 9L6 3L10 9"
-              stroke="white"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+        <img
+          src={slackbuilderMark}
+          alt=""
+          aria-hidden="true"
+          className="h-[18px] w-[18px] shrink-0 pointer-events-none"
+        />
 
         {/* App name */}
-        <span className="text-[12px] font-semibold leading-none tracking-tight text-slate-800 pointer-events-none select-none">
-          Slackbuilder
+        <span className="text-[12px] leading-none tracking-tight text-slate-800 pointer-events-none select-none">
+          <span className="font-bold">slack</span>
+          <span className="font-normal">builder</span>
         </span>
 
         {/* Divider */}

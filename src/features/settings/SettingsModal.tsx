@@ -1,4 +1,4 @@
-import { Moon, Sun, X } from "lucide-react";
+import { ChevronDown, Moon, Sun, X } from "lucide-react";
 import { useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PROVIDERS, type AiProviderId } from "../../lib/ai/types";
@@ -66,47 +66,24 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* Provider */}
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Provider</span>
-            <select
-              value={settings.provider}
-              onChange={(e) => setProvider(e.target.value as AiProviderId)}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-            >
-              {Object.entries(PROVIDERS).map(([id, p]) => (
-                <option key={id} value={id}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Model */}
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">Model</span>
-            <input
-              type="text"
-              value={settings.model}
-              onChange={(e) => setSettings({ model: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-            />
-            <p className="mt-1 text-xs text-slate-400">
-              You can type any model ID your API key has access to. Use the
-              quick-pick in the prompt box for common models.
-            </p>
-          </label>
-
-          {/* Base URL */}
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">
-              Base URL{" "}
-              <span className="font-normal text-slate-400">(optional)</span>
-            </span>
-            <input
-              type="text"
-              value={settings.baseUrl ?? ""}
-              placeholder={PROVIDERS[settings.provider].defaultBaseUrl}
-              onChange={(e) => setSettings({ baseUrl: e.target.value })}
-              className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm font-mono focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
-            />
+            <div className="relative mt-1">
+              <select
+                value={settings.provider}
+                onChange={(e) => setProvider(e.target.value as AiProviderId)}
+                className="w-full appearance-none rounded-lg border border-slate-200 bg-white px-2 py-1.5 pr-8 text-sm shadow-none focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100"
+              >
+                {Object.entries(PROVIDERS).map(([id, p]) => (
+                  <option key={id} value={id}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                size={14}
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+                aria-hidden
+              />
+            </div>
           </label>
 
           {/* API key */}

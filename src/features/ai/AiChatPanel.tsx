@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -19,6 +20,9 @@ import {
   X,
   Eye,
   Brain,
+  Globe,
+  MessageCircle,
+  PencilLine,
   ChevronDown,
   Check,
 } from "lucide-react";
@@ -29,18 +33,22 @@ import {
 } from "../../store/appStore";
 import { buildProvider } from "../../lib/ai/providers/openai";
 import {
-  SLACK_SYSTEM_PROMPT,
+  getSystemPrompt,
   buildContextMessage,
 } from "../../lib/ai/systemPrompt";
-import { parseAiResponse } from "../../lib/ai/parseEditResponse";
+import { parseAiResponse, parseAskResponse } from "../../lib/ai/parseEditResponse";
+import { normalizeEditPositions } from "../../lib/ai/editPosition";
+import { shouldUseOptionalFullRewrite } from "../../lib/ai/applyEditsHelpers";
 import { applyEdits } from "../../lib/ai/applyEdits";
 import { tipTapToMrkdwn } from "../../lib/slack/tipTapToMrkdwn";
 import { tipTapToBlocks } from "../../lib/slack/tipTapToBlocks";
 import { PendingEditCard } from "./PendingEditCard";
+import { ChatMarkdown } from "./chatMarkdown";
 import { isApplyCommand } from "./applyCommand";
 import { cn } from "../../lib/utils";
 import {
   getModelCapabilities,
+  providerSupportsWebSearch,
   PROVIDERS,
   PROVIDER_MODEL_PRESETS,
 } from "../../lib/ai/types";
@@ -61,13 +69,116 @@ interface AttachedImage {
   base64Data: string;
 }
 
-const QUICK_PROMPTS = [
+const EDIT_QUICK_PROMPTS = [
   "make this sound like an incident update",
   "shorten this",
   "make it more technical",
   "turn into bug report",
   "add urgency but stay calm",
 ];
+
+const ASK_QUICK_PROMPTS = [
+  "summarize this message",
+  "what tone does this convey?",
+  "are there any issues with this draft?",
+  "explain the code in this message",
+];
+
+const VISION_TOOLTIP = "Vision-capable — can analyse images";
+const REASONING_TOOLTIP = "Reasoning — extended thinking capabilities";
+const WEB_SEARCH_TOOLTIP =
+  "Web search — model can look up current information on the web";
+
+function HoverTooltip({
+  label,
+  placement = "top",
+  multiline = false,
+  className,
+  children,
+}: {
+  label: string;
+  placement?: "left" | "top";
+  multiline?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
+
+  const showTip = (el: HTMLElement) => {
+    const rect = el.getBoundingClientRect();
+    if (placement === "top") {
+      setTipPos({ x: rect.left + rect.width / 2, y: rect.top - 6 });
+      return;
+    }
+    setTipPos({ x: rect.left - 6, y: rect.top + rect.height / 2 });
+  };
+
+  return (
+    <>
+      <span
+        className={cn("relative inline-flex shrink-0", className)}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseEnter={(e) => showTip(e.currentTarget)}
+        onMouseLeave={() => setTipPos(null)}
+        onFocus={(e) => showTip(e.currentTarget)}
+        onBlur={() => setTipPos(null)}
+      >
+        {children}
+      </span>
+      {tipPos &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              left: tipPos.x,
+              top: tipPos.y,
+              transform:
+                placement === "top"
+                  ? "translate(-50%, -100%)"
+                  : "translate(-100%, -50%)",
+            }}
+            className={cn(
+              "pointer-events-none z-[1002] rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-normal leading-tight text-white shadow-md",
+              multiline
+                ? "max-w-[220px] whitespace-normal text-center"
+                : "whitespace-nowrap",
+            )}
+            role="tooltip"
+          >
+            {label}
+          </div>,
+          window.document.body,
+        )}
+    </>
+  );
+}
+
+function CapabilityIcon({
+  icon: Icon,
+  label,
+  className,
+  tooltipPlacement = "left",
+}: {
+  icon: typeof Eye;
+  label: string;
+  className?: string;
+  tooltipPlacement?: "left" | "top";
+}) {
+  return (
+    <HoverTooltip
+      label={label}
+      placement={tooltipPlacement}
+      className="cursor-default p-0.5"
+    >
+      <Icon
+        size={9}
+        className={className}
+        tabIndex={0}
+        aria-label={label}
+      />
+    </HoverTooltip>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Model selector popover
@@ -143,28 +254,45 @@ function ModelSelector({
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
 
+  const modelTooltip = `${PROVIDERS[provider].label} · ${model}`;
+
   return (
     <>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors select-none"
-        title="Select model"
-      >
-        <span className="max-w-[120px] truncate">{shortName}</span>
+      <HoverTooltip label={modelTooltip} placement="top">
+        <button
+          ref={buttonRef}
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors select-none"
+        >
+          <span className="max-w-[120px] truncate">{shortName}</span>
         {caps.vision && (
-          <span title="Vision">
-            <Eye size={9} className="shrink-0 text-blue-400" />
-          </span>
+          <CapabilityIcon
+            icon={Eye}
+            label={VISION_TOOLTIP}
+            className="shrink-0 text-blue-400"
+            tooltipPlacement="top"
+          />
         )}
         {caps.reasoning && (
-          <span title="Reasoning">
-            <Brain size={9} className="shrink-0 text-violet-400" />
-          </span>
+          <CapabilityIcon
+            icon={Brain}
+            label={REASONING_TOOLTIP}
+            className="shrink-0 text-violet-400"
+            tooltipPlacement="top"
+          />
         )}
-        <ChevronDown size={9} className="shrink-0" />
-      </button>
+        {caps.webSearch && (
+          <CapabilityIcon
+            icon={Globe}
+            label={WEB_SEARCH_TOOLTIP}
+            className="shrink-0 text-emerald-500"
+            tooltipPlacement="top"
+          />
+        )}
+          <ChevronDown size={9} className="shrink-0" />
+        </button>
+      </HoverTooltip>
 
       {open &&
         coords &&
@@ -176,8 +304,9 @@ function ModelSelector({
               left: coords.left,
               bottom: coords.bottom,
             }}
-            className="z-[1000] max-h-[360px] w-60 overflow-y-auto app-scrollbar rounded-lg border border-slate-200 bg-white py-1 text-xs shadow-xl"
+            className="z-[1000] flex w-60 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white text-xs shadow-xl"
           >
+            <div className="max-h-[320px] overflow-y-auto overflow-x-visible app-scrollbar py-1">
             {grouped.map((group, gi) => (
               <div key={group.provider}>
                 {gi > 0 && <div className="my-1 border-t border-slate-100" />}
@@ -209,10 +338,25 @@ function ModelSelector({
                       <span className="flex-1 truncate">{preset.label}</span>
                       <span className="flex shrink-0 items-center gap-0.5">
                         {pc.vision && (
-                          <Eye size={9} className="text-blue-400" />
+                          <CapabilityIcon
+                            icon={Eye}
+                            label={VISION_TOOLTIP}
+                            className="text-blue-400"
+                          />
                         )}
                         {pc.reasoning && (
-                          <Brain size={9} className="text-violet-400" />
+                          <CapabilityIcon
+                            icon={Brain}
+                            label={REASONING_TOOLTIP}
+                            className="text-violet-400"
+                          />
+                        )}
+                        {pc.webSearch && (
+                          <CapabilityIcon
+                            icon={Globe}
+                            label={WEB_SEARCH_TOOLTIP}
+                            className="text-emerald-500"
+                          />
                         )}
                       </span>
                     </button>
@@ -220,7 +364,21 @@ function ModelSelector({
                 })}
               </div>
             ))}
-            <div className="my-1 border-t border-slate-100" />
+            </div>
+            <div className="mx-3 flex items-center gap-3 border-t border-slate-100 py-1.5 text-[10px] text-slate-400">
+              <span className="inline-flex items-center gap-1">
+                <Eye size={9} className="text-blue-400" />
+                Vision
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Brain size={9} className="text-violet-400" />
+                Reasoning
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Globe size={9} className="text-emerald-500" />
+                Web search
+              </span>
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -230,7 +388,7 @@ function ModelSelector({
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-slate-500 hover:bg-slate-50 hover:text-violet-600"
             >
               <Settings size={10} className="shrink-0" />
-              <span>API keys & custom model…</span>
+              <span>API keys…</span>
             </button>
           </div>,
           window.document.body,
@@ -319,6 +477,10 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
 
   // Model capabilities
   const caps = getModelCapabilities(settings.model);
+  const webSearchAvailable = providerSupportsWebSearch(settings.provider);
+  const webSearchOn = Boolean(settings.webSearchEnabled);
+  const chatMode = settings.chatMode ?? "edit";
+  const isAskMode = chatMode === "ask";
 
   // Image paste handler (textarea)
   const handlePaste = useCallback(
@@ -390,6 +552,43 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     (inputText.length > 0 || attachedImages.length > 0) &&
     (Boolean(settings.apiKey) || canApplyPending);
 
+  const sendTooltip = useMemo(() => {
+    if (canSend) return "Send message (Enter)";
+    if (visionBlocked) {
+      return "Remove images or switch to a vision-capable model";
+    }
+    if (!settings.apiKey && !canApplyPending) {
+      return "Add an API key in Settings to send";
+    }
+    if (inputText.length === 0 && attachedImages.length === 0) {
+      return "Type a message to send";
+    }
+    return "Send message (Enter)";
+  }, [
+    canSend,
+    visionBlocked,
+    settings.apiKey,
+    canApplyPending,
+    inputText.length,
+    attachedImages.length,
+  ]);
+
+  const footerHintTooltip = useMemo(() => {
+    if (isAskMode && webSearchOn) {
+      return "Ask mode: chat only, no editor edits. Web search is on.";
+    }
+    if (isAskMode) {
+      return "Ask mode: questions and summaries without changing your message";
+    }
+    if (webSearchOn) {
+      return "Web search enabled — model may look up current information";
+    }
+    if (caps.vision) {
+      return "Shift+Enter for a new line · paste or attach images";
+    }
+    return "Shift+Enter for a new line";
+  }, [isAskMode, webSearchOn, caps.vision]);
+
   const handleSend = async () => {
     if (!canSend) return;
     const userMessage = inputText;
@@ -409,11 +608,13 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       }
 
       const result = applyEdits(document, editsToApply, {
-        fullRewrite:
-          pendingResponse.optionalFullRewrite &&
-          editsToApply.length === pendingResponse.edits.length
-            ? pendingResponse.optionalFullRewrite
-            : undefined,
+        fullRewrite: shouldUseOptionalFullRewrite(
+          pendingResponse.optionalFullRewrite,
+          editsToApply,
+          pendingResponse.edits.length,
+        )
+          ? pendingResponse.optionalFullRewrite
+          : undefined,
       });
       acceptEdits({ document: result.document, editIds: result.appliedEditIds });
       addChatMessages([
@@ -483,7 +684,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       role: "system" | "user" | "assistant";
       content: string | ContentPart[];
     }[] = [
-      { role: "system" as const, content: SLACK_SYSTEM_PROMPT },
+      { role: "system" as const, content: getSystemPrompt(chatMode) },
       ...historyMessages,
       { role: "system" as const, content: contextMsg },
       { role: "user" as const, content: userContent },
@@ -493,15 +694,30 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
       const full = await provider.streamChat(apiMessages, {
         signal: controller.signal,
         onToken,
+        webSearch: webSearchOn,
+        askMode: isAskMode,
       });
-      const parsed = parseAiResponse(full);
-      finishStream(projectId, conversationId, parsed);
+      const parsed = isAskMode
+        ? parseAskResponse(full)
+        : parseAiResponse(full);
+      const response = isAskMode
+        ? parsed
+        : {
+            ...parsed,
+            edits: normalizeEditPositions(mrkdwn, parsed.edits, {
+              userMessage,
+            }),
+          };
+      finishStream(projectId, conversationId, response);
     } catch (err) {
       if (controller.signal.aborted) {
-        finishStream(projectId, conversationId, {
-          assistantMessage: "(cancelled)",
-          edits: [],
-        });
+        const state = useAppStore.getState();
+        const restored = state.isStreaming
+          ? state.cancelStream()
+          : (getActiveConversationFromState(state)?.promptDraft ?? "");
+        setInput(restored);
+        setPromptDraft(restored);
+        setTimeout(() => textareaRef.current?.focus(), 0);
       } else {
         finishStream(projectId, conversationId, {
           assistantMessage: `Error: ${(err as Error).message}`,
@@ -573,10 +789,12 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
         {chat.length === 0 && !pendingResponse && (
           <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-sm">
             <p className="mb-3 font-medium text-slate-800">
-              Ask the AI to refine your Slack message.
+              {isAskMode
+                ? "Ask questions about your Slack message."
+                : "Ask the AI to refine your Slack message."}
             </p>
             <ul className="space-y-1.5">
-              {QUICK_PROMPTS.map((p) => (
+              {(isAskMode ? ASK_QUICK_PROMPTS : EDIT_QUICK_PROMPTS).map((p) => (
                 <li key={p}>
                   <button
                     type="button"
@@ -627,6 +845,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
           // structured edits replace it the moment finishStream fires.
           const isStreamingThisMessage =
             msg.role === "assistant" && isLast && isStreaming;
+          const showStreamedText = isStreamingThisMessage && isAskMode;
           return (
             <div
               key={msg.id}
@@ -637,13 +856,13 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
             >
               <div
                 className={cn(
-                  "inline-block max-w-[92%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-left leading-relaxed",
+                  "inline-block max-w-[92%] break-words rounded-2xl px-3.5 py-2.5 text-left leading-relaxed",
                   msg.role === "user"
-                    ? "bg-violet-600 text-white"
+                    ? "whitespace-pre-wrap bg-violet-600 text-white"
                     : "bg-white text-slate-800 shadow-sm ring-1 ring-slate-100",
                 )}
               >
-                {isStreamingThisMessage ? (
+                {isStreamingThisMessage && !showStreamedText ? (
                   <span className="flex items-center gap-1.5 text-slate-500">
                     <Sparkles size={12} className="text-violet-500" />
                     <span>Making changes</span>
@@ -654,7 +873,11 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     </span>
                   </span>
                 ) : msg.content ? (
-                  msg.content
+                  msg.role === "assistant" ? (
+                    <ChatMarkdown text={msg.content} />
+                  ) : (
+                    msg.content
+                  )
                 ) : (
                   <span className="flex items-center gap-1 text-slate-400">
                     <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:0ms]" />
@@ -736,7 +959,9 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
               placeholder={
                 attachedImages.length > 0
                   ? "Add a message or send image…"
-                  : "Ask the AI anything…"
+                  : isAskMode
+                    ? "Ask about your message…"
+                    : "Ask the AI to edit your message…"
               }
               rows={1}
               className="block w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed text-slate-800 placeholder:text-slate-400 focus:outline-none"
@@ -752,7 +977,51 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
               }}
             />
             <div className="flex items-center gap-2 px-2 pb-1.5 pt-0.5">
-              {/* Model selector */}
+              <div
+                className="flex shrink-0 items-center rounded-md border border-slate-200 bg-slate-50 p-0.5"
+                role="group"
+                aria-label="Chat mode"
+              >
+                <HoverTooltip
+                  label="Edit mode — propose changes to your Slack message"
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ chatMode: "edit" })}
+                    className={cn(
+                      "rounded px-1.5 py-0.5 transition-colors",
+                      !isAskMode
+                        ? "bg-white text-violet-700 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600",
+                    )}
+                    aria-label="Edit mode"
+                    aria-pressed={!isAskMode}
+                  >
+                    <PencilLine size={12} aria-hidden />
+                  </button>
+                </HoverTooltip>
+                <HoverTooltip
+                  label="Ask mode — chat without editing your message"
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSettings({ chatMode: "ask" })}
+                    className={cn(
+                      "rounded px-1.5 py-0.5 transition-colors",
+                      isAskMode
+                        ? "bg-white text-violet-700 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600",
+                    )}
+                    aria-label="Ask mode"
+                    aria-pressed={isAskMode}
+                  >
+                    <MessageCircle size={12} aria-hidden />
+                  </button>
+                </HoverTooltip>
+              </div>
+
               <ModelSelector
                 model={settings.model}
                 provider={settings.provider}
@@ -760,11 +1029,45 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                 onOpenSettings={onOpenSettings}
               />
 
+              {webSearchAvailable && (
+                <HoverTooltip
+                  label={
+                    webSearchOn
+                      ? "Web search on — click to disable"
+                      : "Web search off — click to look up current information"
+                  }
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettings({ webSearchEnabled: !webSearchOn })
+                    }
+                    className={cn(
+                      "rounded p-0.5 transition-colors",
+                      webSearchOn
+                        ? "text-emerald-600 hover:text-emerald-700"
+                        : "text-slate-300 hover:text-slate-500",
+                    )}
+                    aria-label={
+                      webSearchOn ? "Disable web search" : "Enable web search"
+                    }
+                    aria-pressed={webSearchOn}
+                  >
+                    <Globe size={13} />
+                  </button>
+                </HoverTooltip>
+              )}
+
               {/* Image attach button (only if vision supported) */}
               {caps.vision && (
-                <button
-                  type="button"
-                  onClick={() => {
+                <HoverTooltip
+                  label="Attach image — or paste from clipboard"
+                  placement="top"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
                     const input = window.document.createElement("input");
                     input.type = "file";
                     input.accept = "image/*";
@@ -789,49 +1092,70 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                     };
                     input.click();
                   }}
-                  className="rounded p-0.5 text-slate-300 hover:text-slate-500 transition-colors"
-                  title="Attach image"
-                >
-                  <ImageIcon size={13} />
-                </button>
+                    className="rounded p-0.5 text-slate-300 hover:text-slate-500 transition-colors"
+                    aria-label="Attach image"
+                  >
+                    <ImageIcon size={13} />
+                  </button>
+                </HoverTooltip>
               )}
 
               {/* Shift+Enter hint — sits on the left next to the model picker
                   so it doesn't crowd the send button. */}
-              <div className="text-[10px] text-slate-400 select-none truncate">
-                {caps.vision
-                  ? "Shift+Enter newline · paste image"
-                  : "Shift+Enter for newline"}
-              </div>
+              <HoverTooltip
+                label={footerHintTooltip}
+                placement="top"
+                multiline
+                className="min-w-0 flex-1 cursor-default"
+              >
+                <span className="block truncate text-[10px] text-slate-400 select-none">
+                  {isAskMode
+                    ? webSearchOn
+                      ? "Ask mode · web search on"
+                      : "Ask mode"
+                    : webSearchOn
+                      ? "Web search on"
+                      : caps.vision
+                        ? "Shift+Enter newline · paste image"
+                        : "Shift+Enter for newline"}
+                </span>
+              </HoverTooltip>
 
               <div className="ml-auto flex shrink-0 items-center">
                 {/* Send / stop */}
                 {isStreaming ? (
-                  <button
-                    type="button"
-                    onClick={cancelStream}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
-                    title="Stop"
-                    aria-label="Stop"
-                  >
-                    <Square size={12} fill="currentColor" />
-                  </button>
+                  <HoverTooltip label="Stop generating" placement="top">
+                    <button
+                      type="button"
+                      onClick={() => {
+                      const restored = cancelStream();
+                      setInput(restored);
+                      setPromptDraft(restored);
+                      setTimeout(() => textareaRef.current?.focus(), 0);
+                    }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                      aria-label="Stop"
+                    >
+                      <Square size={12} fill="currentColor" />
+                    </button>
+                  </HoverTooltip>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={!canSend}
-                    className={cn(
-                      "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                      canSend
-                        ? "bg-violet-600 text-white hover:bg-violet-700"
-                        : "cursor-not-allowed bg-slate-200 text-slate-400",
-                    )}
-                    title="Send (Enter)"
-                    aria-label="Send"
-                  >
-                    <ArrowUp size={14} />
-                  </button>
+                  <HoverTooltip label={sendTooltip} placement="top" multiline>
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!canSend}
+                      className={cn(
+                        "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+                        canSend
+                          ? "bg-violet-600 text-white hover:bg-violet-700"
+                          : "cursor-not-allowed bg-slate-200 text-slate-400",
+                      )}
+                      aria-label="Send"
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                  </HoverTooltip>
                 )}
               </div>
             </div>

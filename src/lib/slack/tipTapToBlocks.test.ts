@@ -3,15 +3,20 @@ import { tipTapToBlocks } from "./tipTapToBlocks";
 import { mrkdwnToTipTap } from "./mrkdwnToTipTap";
 
 describe("tipTapToBlocks", () => {
-  it("groups consecutive text nodes into a single text block", () => {
+  it("assigns separate blocks per top-level paragraph", () => {
     const doc = mrkdwnToTipTap("first paragraph\n\nsecond paragraph");
     const blocks = tipTapToBlocks(doc);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].type).toBe("text");
-    if (blocks[0].type === "text") {
-      expect(blocks[0].content).toContain("first paragraph");
-      expect(blocks[0].content).toContain("second paragraph");
-    }
+    expect(blocks.length).toBeGreaterThanOrEqual(2);
+    expect(blocks.every((b) => b.type === "text")).toBe(true);
+  });
+
+  it("splits code blocks from prose", () => {
+    const doc = mrkdwnToTipTap(
+      "```python\nx = 1\n```\n\nDear team,\n\n- item",
+    );
+    const blocks = tipTapToBlocks(doc);
+    expect(blocks.map((b) => b.type)).toEqual(["code", "text", "text"]);
+    expect(blocks[0].blockId).toBe("code-1");
   });
 
   it("extracts an image block with its block id", () => {

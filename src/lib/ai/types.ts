@@ -24,17 +24,28 @@ export interface ChatMessage {
 
 export type AiProviderId = "openai" | "anthropic" | "openrouter";
 
+/** Edit: propose changes to the Slack message. Ask: chat Q&A with editor context only. */
+export type ChatMode = "edit" | "ask";
+
 export interface AiProviderSettings {
   provider: AiProviderId;
   apiKey: string;
   model: string;
   baseUrl?: string;
   theme?: "light" | "dark";
+  /** When true, providers that support it may search the web for up-to-date information. */
+  webSearchEnabled?: boolean;
+  /** Ask = direct chat; edit = structured edits to the composer (default). */
+  chatMode?: ChatMode;
 }
 
 export interface StreamOpts {
   signal?: AbortSignal;
   onToken?: (token: string) => void;
+  /** Enable provider-native web search for this request. */
+  webSearch?: boolean;
+  /** Plain chat response; do not force JSON from the provider. */
+  askMode?: boolean;
 }
 
 export interface AiProvider {
@@ -79,12 +90,12 @@ export interface ModelCapabilities {
 /** Known-model capability table. Falls back to heuristics for unknown models. */
 const KNOWN: Record<string, ModelCapabilities> = {
   // OpenAI
-  "gpt-4o":              { vision: true,  reasoning: false, webSearch: false },
-  "gpt-4o-mini":         { vision: true,  reasoning: false, webSearch: false },
-  "gpt-4-turbo":         { vision: true,  reasoning: false, webSearch: false },
-  "gpt-4.1":             { vision: true,  reasoning: false, webSearch: false },
-  "gpt-4.1-mini":        { vision: true,  reasoning: false, webSearch: false },
-  "gpt-4.1-nano":        { vision: true,  reasoning: false, webSearch: false },
+  "gpt-4o":              { vision: true,  reasoning: false, webSearch: true },
+  "gpt-4o-mini":         { vision: true,  reasoning: false, webSearch: true },
+  "gpt-4-turbo":         { vision: true,  reasoning: false, webSearch: true },
+  "gpt-4.1":             { vision: true,  reasoning: false, webSearch: true },
+  "gpt-4.1-mini":        { vision: true,  reasoning: false, webSearch: true },
+  "gpt-4.1-nano":        { vision: true,  reasoning: false, webSearch: true },
   "o1":                  { vision: true,  reasoning: true,  webSearch: false },
   "o1-mini":             { vision: false, reasoning: true,  webSearch: false },
   "o1-preview":          { vision: false, reasoning: true,  webSearch: false },
@@ -92,22 +103,27 @@ const KNOWN: Record<string, ModelCapabilities> = {
   "o3-mini":             { vision: false, reasoning: true,  webSearch: false },
   "o4-mini":             { vision: true,  reasoning: true,  webSearch: false },
   // Anthropic
-  "claude-opus-4-7":              { vision: true, reasoning: true,  webSearch: false },
-  "claude-sonnet-4-6":            { vision: true, reasoning: false, webSearch: false },
-  "claude-haiku-4-5-20251001":    { vision: true, reasoning: false, webSearch: false },
-  "claude-3-5-sonnet-20241022":   { vision: true, reasoning: false, webSearch: false },
-  "claude-3-5-haiku-20241022":    { vision: true, reasoning: false, webSearch: false },
-  "claude-3-opus-20240229":       { vision: true, reasoning: false, webSearch: false },
+  "claude-opus-4-7":              { vision: true, reasoning: true,  webSearch: true },
+  "claude-sonnet-4-6":            { vision: true, reasoning: false, webSearch: true },
+  "claude-haiku-4-5-20251001":    { vision: true, reasoning: false, webSearch: true },
+  "claude-3-5-sonnet-20241022":   { vision: true, reasoning: false, webSearch: true },
+  "claude-3-5-haiku-20241022":    { vision: true, reasoning: false, webSearch: true },
+  "claude-3-opus-20240229":       { vision: true, reasoning: false, webSearch: true },
   // OpenRouter common
-  "anthropic/claude-3.5-sonnet":  { vision: true, reasoning: false, webSearch: false },
-  "openai/gpt-4o":                { vision: true, reasoning: false, webSearch: false },
-  "openai/gpt-4o-mini":           { vision: true, reasoning: false, webSearch: false },
+  "anthropic/claude-3.5-sonnet":  { vision: true, reasoning: false, webSearch: true },
+  "openai/gpt-4o":                { vision: true, reasoning: false, webSearch: true },
+  "openai/gpt-4o-mini":           { vision: true, reasoning: false, webSearch: true },
   "openai/o3-mini":               { vision: false, reasoning: true,  webSearch: false },
   "openai/o4-mini":               { vision: true,  reasoning: true,  webSearch: false },
   "meta-llama/llama-3.1-70b-instruct": { vision: false, reasoning: false, webSearch: false },
-  "google/gemini-2.0-flash-001":  { vision: true, reasoning: false, webSearch: false },
-  "google/gemini-2.5-pro":        { vision: true, reasoning: true,  webSearch: false },
+  "google/gemini-2.0-flash-001":  { vision: true, reasoning: false, webSearch: true },
+  "google/gemini-2.5-pro":        { vision: true, reasoning: true,  webSearch: true },
 };
+
+/** Whether the active provider can run web search (any model on OpenRouter). */
+export function providerSupportsWebSearch(provider: AiProviderId): boolean {
+  return provider === "openai" || provider === "anthropic" || provider === "openrouter";
+}
 
 export function getModelCapabilities(model: string): ModelCapabilities {
   const m = model.trim();
@@ -134,7 +150,19 @@ export function getModelCapabilities(model: string): ModelCapabilities {
     lower.includes("thinking") ||
     lower.includes("reason");
 
-  return { vision, reasoning, webSearch: false };
+  const webSearch =
+    !lower.includes("o1-mini") &&
+    !lower.includes("o1-preview") &&
+    (lower.includes("gpt-") ||
+      lower.includes("claude") ||
+      lower.includes("gemini") ||
+      lower.includes("4o") ||
+      lower.includes("4.1") ||
+      lower.includes("/openai/") ||
+      lower.includes("/anthropic/") ||
+      lower.includes("/google/"));
+
+  return { vision, reasoning, webSearch };
 }
 
 /** Quick-pick model lists shown in the model selector dropdown */

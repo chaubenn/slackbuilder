@@ -2,6 +2,7 @@ import { Check, X, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useAppStore, filterSelectedEdits } from "../../store/appStore";
 import { applyEdits } from "../../lib/ai/applyEdits";
+import { shouldUseOptionalFullRewrite } from "../../lib/ai/applyEditsHelpers";
 import { cn } from "../../lib/utils";
 
 export function PendingEditCard() {
@@ -24,11 +25,13 @@ export function PendingEditCard() {
     const editsToApply = filterSelectedEdits(pendingResponse, selected);
     if (editsToApply.length === 0) return;
     const result = applyEdits(document, editsToApply, {
-      fullRewrite:
-        pendingResponse.optionalFullRewrite &&
-        editsToApply.length === pendingResponse.edits.length
-          ? pendingResponse.optionalFullRewrite
-          : undefined,
+      fullRewrite: shouldUseOptionalFullRewrite(
+        pendingResponse.optionalFullRewrite,
+        editsToApply,
+        pendingResponse.edits.length,
+      )
+        ? pendingResponse.optionalFullRewrite
+        : undefined,
     });
     acceptEdits({ document: result.document, editIds: result.appliedEditIds });
   };
@@ -70,9 +73,21 @@ export function PendingEditCard() {
                   {edit.type}
                 </span>
                 <span className="truncate font-mono">
-                  {typeof edit.target === "string"
-                    ? edit.target
-                    : `${edit.target.start}–${edit.target.end}`}
+                  {edit.type === "move" && edit.destination ? (
+                    <>
+                      {typeof edit.target === "string"
+                        ? edit.target
+                        : `${edit.target.start}–${edit.target.end}`}
+                      {" → "}
+                      {typeof edit.destination === "string"
+                        ? edit.destination
+                        : `${edit.destination.start}–${edit.destination.end}`}
+                    </>
+                  ) : typeof edit.target === "string" ? (
+                    edit.target
+                  ) : (
+                    `${edit.target.start}–${edit.target.end}`
+                  )}
                 </span>
               </div>
               {edit.rationale && (

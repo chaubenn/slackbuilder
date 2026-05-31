@@ -2,6 +2,7 @@ import type { JSONContent } from "@tiptap/react";
 
 export type MessageBlock =
   | { type: "text"; content: string; blockId: string }
+  | { type: "code"; content: string; blockId: string }
   | { type: "image"; url: string; blockId: string; alt?: string }
   | { type: "video"; url: string; blockId: string }
   | {
@@ -18,14 +19,22 @@ export interface SlackMessage {
   blocks: MessageBlock[];
 }
 
-export type EditType = "replace" | "insert" | "delete" | "rewrite_section";
+export type EditType =
+  | "replace"
+  | "insert"
+  | "delete"
+  | "rewrite_section"
+  | "move";
 
 export type EditTarget = string | { start: number; end: number };
 
 export interface StructuredEdit {
   id: string;
   type: EditType;
+  /** Source block/range (for move: content to relocate). */
   target: EditTarget;
+  /** For move: block id or offset where the slice is inserted (after block, or at offset). */
+  destination?: EditTarget;
   content?: string;
   rationale?: string;
 }

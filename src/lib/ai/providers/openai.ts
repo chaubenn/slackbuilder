@@ -6,6 +6,13 @@ import type {
   StreamOpts,
 } from "../types";
 import { PROVIDERS } from "../types";
+import {
+  ANTHROPIC_WEB_SEARCH_TOOL,
+  extractOpenAIResponsesDelta,
+  OPENAI_WEB_SEARCH_TOOL,
+  OPENROUTER_WEB_SEARCH_TOOL,
+  toOpenAIResponsesPayload,
+} from "./webSearchHelpers";
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible content serialiser
@@ -72,6 +79,59 @@ function supportsJsonResponseFormat(model: string): boolean {
   return true;
 }
 
+function toResponsesContent(content: string | ContentPart[]) {
+  if (typeof content === "string") return content;
+  return content.map((part) => {
+    if (part.type === "text") {
+      return { type: "input_text", text: part.text };
+    }
+    return {
+      type: "input_image",
+      image_url: `data:${part.mimeType};base64,${part.data}`,
+    };
+  });
+}
+
+async function streamOpenAIResponses(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  messages: { role: ChatRole; content: string | ContentPart[] }[],
+  opts: StreamOpts,
+): Promise<string> {
+  const { instructions, input } = toOpenAIResponsesPayload(messages);
+
+  // Web search and JSON mode are mutually exclusive on the Responses API.
+  // Structured edits still come from the system prompt; parseAiResponse extracts JSON.
+  const body: Record<string, unknown> = {
+    model,
+    input: input.map((m) => ({
+      role: m.role,
+      content: toResponsesContent(m.content),
+    })),
+    tools: [OPENAI_WEB_SEARCH_TOOL],
+    stream: true,
+    ...(instructions ? { instructions } : {}),
+  };
+
+  const res = await fetch(`${baseUrl}/responses`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal: opts.signal,
+  });
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`OpenAI error ${res.status}: ${text || res.statusText}`);
+  }
+
+  return readSseStream(res.body, opts.onToken, extractOpenAIResponsesDelta);
+}
+
 // ---------------------------------------------------------------------------
 // Providers
 // ---------------------------------------------------------------------------
@@ -86,6 +146,16 @@ export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
     id: "openai",
     defaultModel: PROVIDERS.openai.defaultModel,
     async streamChat(messages, opts: StreamOpts) {
+      if (opts.webSearch) {
+        return streamOpenAIResponses(
+          baseUrl,
+          settings.apiKey,
+          model,
+          messages,
+          opts,
+        );
+      }
+
       // Reasoning models (o1-mini, o1-preview) don't support system role —
       // convert system messages to user messages with a [SYSTEM] prefix.
       const processedMessages = isReasoningModel(model)
@@ -106,7 +176,7 @@ export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
         temperature: isReasoningModel(model) ? undefined : 0.4,
         // Force valid JSON output so the model can't respond with bare prose.
         // extractJsonBlock() handles both fenced (```json{…}```) and raw ({…}) JSON.
-        ...(supportsJsonResponseFormat(model)
+        ...(supportsJsonResponseFormat(model) && !opts.askMode
           ? { response_format: { type: "json_object" } }
           : {}),
       };
@@ -168,7 +238,10 @@ export function createOpenRouterProvider(
         })),
         stream: true,
         temperature: 0.4,
-        ...(isOpenAIModel ? { response_format: { type: "json_object" } } : {}),
+        ...(isOpenAIModel && !opts.webSearch && !opts.askMode
+          ? { response_format: { type: "json_object" } }
+          : {}),
+        ...(opts.webSearch ? { tools: [OPENROUTER_WEB_SEARCH_TOOL] } : {}),
       };
 
       const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -227,12 +300,13 @@ export function createAnthropicProvider(
           content: toAnthropicContent(m.content),
         }));
 
-      const body = {
+      const body: Record<string, unknown> = {
         model: settings.model || PROVIDERS.anthropic.defaultModel,
         max_tokens: 4096,
         system: systemMessages || undefined,
         messages: conversational,
         stream: true,
+        ...(opts.webSearch ? { tools: [ANTHROPIC_WEB_SEARCH_TOOL] } : {}),
       };
 
       const res = await fetch(`${baseUrl}/messages`, {
