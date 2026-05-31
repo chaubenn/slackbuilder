@@ -277,6 +277,7 @@ html.dark .bg-slate-100\/80 { background-color: rgba(43, 45, 49, 0.9); }
 
 /* Borders */
 html.dark .border-slate-200 { border-color: #3b3d41; }
+html.dark .border-slate-100 { border-color: #3b3d41; }
 html.dark .border-b.border-slate-200 { border-color: #3b3d41; }
 html.dark .ring-slate-100 { --tw-ring-color: #3b3d41; }
 html.dark .ring-slate-200 { --tw-ring-color: #3b3d41; }
@@ -393,3 +394,8 @@ html.dark .text-amber-800 { color: #fbbf24; }
 /* Slate-900 button (Copy to Slack) — keep dark */
 html.dark .bg-slate-900 { background-color: #111214; }
 html.dark .hover\:bg-slate-800:hover { background-color: #1e2124; }
+
+/* Destructive accents */
+html.dark .text-rose-600 { color: #fb7185; }
+html.dark .bg-rose-600 { background-color: #e11d48; }
+html.dark .hover\:bg-rose-700:hover { background-color: #be123c; }

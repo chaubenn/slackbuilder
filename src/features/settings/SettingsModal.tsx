@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { PROVIDERS, type AiProviderId } from "../../lib/ai/types";
 import { cn } from "../../lib/utils";
+import { deleteSlackbuilder } from "./deleteSlackbuilder";
 
 interface SettingsModalProps {
   open: boolean;
@@ -14,10 +15,25 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const setSettings = useAppStore((s) => s.setSettings);
   const setProvider = useAppStore((s) => s.setProvider);
   const [showKey, setShowKey] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (!open) return null;
 
   const theme = settings.theme ?? "light";
+
+  const handleDeleteSlackbuilder = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteSlackbuilder();
+    } catch (err) {
+      setDeleteError((err as Error).message);
+      setDeleting(false);
+    }
+  };
 
   return (
     <div
@@ -109,6 +125,59 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
               select — never to Slackbuilder servers.
             </p>
           </label>
+
+          <hr className="border-slate-100" />
+
+          <div>
+            <span className="block text-sm font-medium text-slate-700 mb-1.5">
+              Danger zone
+            </span>
+            <p className="text-xs leading-5 text-slate-400">
+              This removes Slackbuilder and all local app data from this
+              machine, including saved settings and API keys.
+            </p>
+
+            {confirmDelete ? (
+              <div className="mt-2 rounded-lg border border-slate-200 p-3">
+                <p className="text-xs leading-5 text-slate-600">
+                  This cannot be undone. Slackbuilder will close after the
+                  deletion starts.
+                </p>
+                {deleteError ? (
+                  <p className="mt-2 text-xs text-rose-600">{deleteError}</p>
+                ) : null}
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteSlackbuilder}
+                    disabled={deleting}
+                    className="rounded-lg bg-rose-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deleting ? "Deleting..." : "Delete permanently"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDelete(true);
+                  setDeleteError(null);
+                }}
+                className="mt-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-rose-600 transition-colors hover:bg-slate-50"
+              >
+                Delete Slackbuilder
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
