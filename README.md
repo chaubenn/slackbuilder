@@ -23,6 +23,14 @@ Most users should install Slackbuilder from the latest GitHub release:
    - **Windows:** `.exe`
 3. Open the installer and launch Slackbuilder.
 
+**macOS:** If Gatekeeper says Slackbuilder is “damaged” after download, the app is not corrupted — macOS blocks unsigned apps downloaded from the internet. Remove the quarantine flag, then open again:
+
+```bash
+xattr -cr /Applications/Slackbuilder.app
+```
+
+Alternatively, right-click the app and choose **Open** the first time.
+
 ## Running locally
 
 Use this if you want to develop Slackbuilder or run it from source.
