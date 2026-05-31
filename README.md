@@ -1,10 +1,9 @@
 # Slackbuilder
+<p align="center">
+  <img src="docs/assets/logo_animated.webp" alt="Slackbuilder logo animation" width="75%" />
+</p>
 
 **An AI-powered WYSIWYG for Slack messages** — draft and refine in a Slack-faithful editor, then **Copy to Slack** so paste into the Slack desktop app keeps formatting exactly.
-
-<p align="center">
-  <img src="docs/assets/logo_animated.webp" alt="Slackbuilder logo animation" width="100%" />
-</p>
 
 Slackbuilder is a local **Tauri 2** desktop app. The center of the product is the editor: what you see is what you get. The AI panel is a pair-writer that proposes structured edits you accept, reject, or tweak. When the message is ready, one click (or **Cmd/Ctrl+Shift+C**) copies native Slack clipboard data — not plain text — so your team gets bold, lists, code, links, and images as intended.
 
