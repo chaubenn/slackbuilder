@@ -1,6 +1,6 @@
-# Issues Board
+# Kanban Board
 
-A lightweight kanban for tracking work and managing Agile practises for SlackBuilder. 
+A kanban for tracking work and managing Agile practises for SlackBuilder. 
 
 Flow is someone fixes a ticket in Backlog -> Move ticket to QA -> Ping someone to QA -> QA person verifies then removes from QA to Done
 
