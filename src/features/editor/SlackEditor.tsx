@@ -15,6 +15,21 @@ interface SlackEditorProps {
 
 const URL_REGEX = /^https?:\/\/\S+$/i;
 
+const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+async function openUrl(url: string) {
+  if (IS_TAURI) {
+    try {
+      const { open } = await import("@tauri-apps/plugin-opener");
+      await open(url);
+      return;
+    } catch {
+      // fall through
+    }
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -51,6 +66,19 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
       attributes: {
         class:
           "slack-message app-scrollbar prose-none focus:outline-none px-6 py-4 min-h-full",
+      },
+      handleDOMEvents: {
+        click(_view, event) {
+          if (!(event.ctrlKey || event.metaKey)) return false;
+          const anchor = (event.target as HTMLElement).closest("a[href]");
+          if (!anchor) return false;
+          const href = anchor.getAttribute("href");
+          if (href) {
+            event.preventDefault();
+            void openUrl(href);
+          }
+          return true;
+        },
       },
       handlePaste(_view, event) {
         const clipData = event.clipboardData;

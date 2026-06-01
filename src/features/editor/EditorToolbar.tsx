@@ -16,27 +16,52 @@ import {
   Undo2,
   Redo2,
   X,
+  Trash2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 interface LinkDialogProps {
-  onConfirm: (url: string) => void;
+  initialUrl: string;
+  initialText: string;
+  isEditing: boolean;
+  onConfirm: (url: string, text: string) => void;
+  onRemove: () => void;
   onClose: () => void;
 }
 
-function LinkDialog({ onConfirm, onClose }: LinkDialogProps) {
-  const [value, setValue] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
+function LinkDialog({
+  initialUrl,
+  initialText,
+  isEditing,
+  onConfirm,
+  onRemove,
+  onClose,
+}: LinkDialogProps) {
+  const [url, setUrl] = useState(initialUrl);
+  const [text, setText] = useState(initialText);
+  const urlRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    const target = isEditing ? textRef.current : urlRef.current;
+    target?.focus();
+    target?.select();
+  }, [isEditing]);
 
   const handleConfirm = () => {
-    const url = value.trim();
-    if (!url) return;
-    onConfirm(url.match(/^https?:\/\//) ? url : `https://${url}`);
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    const finalUrl = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    onConfirm(finalUrl, text.trim());
   };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleConfirm();
+    if (e.key === "Escape") onClose();
+  };
+
+  const inputClass =
+    "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 dark:border-slate-600 dark:bg-[#2b2d31] dark:text-slate-100 dark:placeholder-slate-500";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
@@ -45,7 +70,7 @@ function LinkDialog({ onConfirm, onClose }: LinkDialogProps) {
           <div className="flex items-center gap-2">
             <LinkIcon size={14} className="text-slate-400" />
             <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              Add link
+              {isEditing ? "Edit link" : "Add link"}
             </span>
           </div>
           <button
@@ -55,41 +80,74 @@ function LinkDialog({ onConfirm, onClose }: LinkDialogProps) {
             <X size={14} />
           </button>
         </div>
-        <div className="px-4 py-3">
-          <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">
-            URL
-          </label>
-          <input
-            ref={inputRef}
-            type="url"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleConfirm();
-              if (e.key === "Escape") onClose();
-            }}
-            placeholder="https://example.com"
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 dark:border-slate-600 dark:bg-[#2b2d31] dark:text-slate-100 dark:placeholder-slate-500"
-          />
+        <div className="space-y-3 px-4 py-3">
+          {isEditing && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Display text
+              </label>
+              <input
+                ref={textRef}
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Link text"
+                className={inputClass}
+              />
+            </div>
+          )}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">
+              URL
+            </label>
+            <input
+              ref={urlRef}
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="https://example.com"
+              className={inputClass}
+            />
+          </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3 dark:border-slate-700">
-          <button
-            onClick={onClose}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-700"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleConfirm}
-            disabled={!value.trim()}
-            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-40"
-          >
-            Add link
-          </button>
+        <div className="flex items-center border-t border-slate-100 px-4 py-3 dark:border-slate-700">
+          {isEditing && (
+            <button
+              onClick={onRemove}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+            >
+              <Trash2 size={12} />
+              Remove
+            </button>
+          )}
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={!url.trim()}
+              className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-40"
+            >
+              {isEditing ? "Update" : "Add link"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+interface LinkDialogState {
+  isEditing: boolean;
+  initialUrl: string;
+  initialText: string;
+  linkRange: { from: number; to: number } | null;
 }
 
 interface ToolbarProps {
@@ -137,7 +195,7 @@ export function EditorToolbar({
 }: ToolbarProps) {
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
   const [, forceTick] = useState(0);
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
 
   useEffect(() => {
     if (!usableEditor) return;
@@ -241,20 +299,53 @@ export function EditorToolbar({
       </ToolbarButton>
       <Separator />
       <ToolbarButton
-        title="Add link"
+        title="Add / edit link"
         disabled={!usableEditor}
         active={usableEditor?.isActive("link")}
-        onClick={() => setLinkDialogOpen(true)}
+        onClick={() => {
+          if (!usableEditor) return;
+          if (usableEditor.isActive("link")) {
+            const href = (usableEditor.getAttributes("link").href as string) ?? "";
+            // Extend selection to the full link mark to capture display text and range
+            usableEditor.chain().extendMarkRange("link").run();
+            const { from, to } = usableEditor.state.selection;
+            const linkText = usableEditor.state.doc.textBetween(from, to, "");
+            setLinkDialog({ isEditing: true, initialUrl: href, initialText: linkText, linkRange: { from, to } });
+          } else {
+            setLinkDialog({ isEditing: false, initialUrl: "", initialText: "", linkRange: null });
+          }
+        }}
       >
         <LinkIcon size={15} />
       </ToolbarButton>
-      {linkDialogOpen && (
+      {linkDialog && (
         <LinkDialog
-          onConfirm={(url) => {
-            usableEditor?.chain().focus().setLink({ href: url }).run();
-            setLinkDialogOpen(false);
+          initialUrl={linkDialog.initialUrl}
+          initialText={linkDialog.initialText}
+          isEditing={linkDialog.isEditing}
+          onConfirm={(url, text) => {
+            if (linkDialog.isEditing && linkDialog.linkRange) {
+              const { from, to } = linkDialog.linkRange;
+              usableEditor?.chain().focus().command(({ tr, state }) => {
+                const mark = state.schema.marks.link.create({ href: url });
+                tr.replaceWith(from, to, state.schema.text(text || url, [mark]));
+                return true;
+              }).run();
+            } else {
+              usableEditor?.chain().focus().setLink({ href: url }).run();
+            }
+            setLinkDialog(null);
           }}
-          onClose={() => setLinkDialogOpen(false)}
+          onRemove={() => {
+            if (linkDialog.linkRange) {
+              const { from, to } = linkDialog.linkRange;
+              usableEditor?.chain().focus().setTextSelection({ from, to }).unsetLink().run();
+            } else {
+              usableEditor?.chain().focus().extendMarkRange("link").unsetLink().run();
+            }
+            setLinkDialog(null);
+          }}
+          onClose={() => setLinkDialog(null)}
         />
       )}
       {/* Image button — label wraps the input so WebKit on macOS treats the

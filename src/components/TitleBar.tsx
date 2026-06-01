@@ -112,7 +112,7 @@ export function TitleBar({ status }: TitleBarProps) {
       <div
         data-tauri-drag-region
         onDoubleClick={IS_TAURI ? toggleZoom : undefined}
-        className="flex flex-1 items-center gap-1.5 overflow-hidden px-3"
+        className="flex flex-1 items-center gap-1 overflow-hidden px-3"
       >
         {/* Logo mark */}
         <img
