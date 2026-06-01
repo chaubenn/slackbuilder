@@ -14,6 +14,12 @@ Flow is someone fixes a ticket in Backlog -> Move ticket to QA -> Ping someone t
 
 ## Done 
 
+### Feature - fullscreen for MacOS 
+- right now, users can fullscreen the app however it isn't a mac-native fullscreen, it just enlarges it on the users desktop
+
+### Bug - link button
+- link editor toolbar functionality is missing; make it work like in slack to make hyperlinks or add links
+
 ### Improvement — model selector & settings modal
 - Eye / brain / globe capability icons on the model picker (trigger + preset list) use hover tooltips (vision, reasoning, web search)
 - Settings modal: removed Model and Base URL fields (provider + API key + theme only); model/base URL chosen via prompt-box model selector
