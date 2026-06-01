@@ -69,15 +69,18 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
       },
       handleDOMEvents: {
         click(_view, event) {
-          if (!(event.ctrlKey || event.metaKey)) return false;
           const anchor = (event.target as HTMLElement).closest("a[href]");
           if (!anchor) return false;
-          const href = anchor.getAttribute("href");
-          if (href) {
-            event.preventDefault();
-            void openUrl(href);
+          // Always block the browser from navigating on a plain click inside
+          // the editor — the user just wants to move their caret.
+          event.preventDefault();
+          if (event.ctrlKey || event.metaKey) {
+            const href = anchor.getAttribute("href");
+            if (href) void openUrl(href);
+            return true;
           }
-          return true;
+          // Return false so ProseMirror still handles cursor placement.
+          return false;
         },
       },
       handlePaste(_view, event) {
