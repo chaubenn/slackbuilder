@@ -68,19 +68,23 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
           "slack-message app-scrollbar prose-none focus:outline-none px-6 py-4 min-h-full",
       },
       handleDOMEvents: {
+        // mousedown fires before WebKit can intercept Cmd+click on <a> elements.
+        mousedown(_view, event) {
+          if (!(event.ctrlKey || event.metaKey)) return false;
+          const anchor = (event.target as HTMLElement).closest("a[href]");
+          if (!anchor) return false;
+          event.preventDefault();
+          const href = anchor.getAttribute("href");
+          if (href) void openUrl(href);
+          return true;
+        },
+        // Prevent the browser/webview from navigating on a plain click so the
+        // user can place their caret inside a hyperlink normally.
         click(_view, event) {
           const anchor = (event.target as HTMLElement).closest("a[href]");
           if (!anchor) return false;
-          // Always block the browser from navigating on a plain click inside
-          // the editor — the user just wants to move their caret.
           event.preventDefault();
-          if (event.ctrlKey || event.metaKey) {
-            const href = anchor.getAttribute("href");
-            if (href) void openUrl(href);
-            return true;
-          }
-          // Return false so ProseMirror still handles cursor placement.
-          return false;
+          return false; // let ProseMirror move the caret
         },
       },
       handlePaste(_view, event) {
