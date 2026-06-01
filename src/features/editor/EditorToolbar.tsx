@@ -15,8 +15,82 @@ import {
   Check,
   Undo2,
   Redo2,
+  X,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+
+interface LinkDialogProps {
+  onConfirm: (url: string) => void;
+  onClose: () => void;
+}
+
+function LinkDialog({ onConfirm, onClose }: LinkDialogProps) {
+  const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const handleConfirm = () => {
+    const url = value.trim();
+    if (!url) return;
+    onConfirm(url.match(/^https?:\/\//) ? url : `https://${url}`);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-[340px] rounded-xl bg-white shadow-2xl ring-1 ring-slate-200 dark:bg-[#1e2124] dark:ring-slate-700">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-700">
+          <div className="flex items-center gap-2">
+            <LinkIcon size={14} className="text-slate-400" />
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              Add link
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-700"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        <div className="px-4 py-3">
+          <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">
+            URL
+          </label>
+          <input
+            ref={inputRef}
+            type="url"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleConfirm();
+              if (e.key === "Escape") onClose();
+            }}
+            placeholder="https://example.com"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 dark:border-slate-600 dark:bg-[#2b2d31] dark:text-slate-100 dark:placeholder-slate-500"
+          />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3 dark:border-slate-700">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-700"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirm}
+            disabled={!value.trim()}
+            className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 disabled:opacity-40"
+          >
+            Add link
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -63,7 +137,7 @@ export function EditorToolbar({
 }: ToolbarProps) {
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
   const [, forceTick] = useState(0);
-  const imageFileRef = useRef<HTMLInputElement>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!usableEditor) return;
@@ -169,29 +243,40 @@ export function EditorToolbar({
       <ToolbarButton
         title="Add link"
         disabled={!usableEditor}
-        onClick={() => {
-          const url = window.prompt("Link URL");
-          if (!url) return;
-          usableEditor?.chain().focus().setLink({ href: url }).run();
-        }}
+        active={usableEditor?.isActive("link")}
+        onClick={() => setLinkDialogOpen(true)}
       >
         <LinkIcon size={15} />
       </ToolbarButton>
-      {/* Image button — opens a file picker instead of a URL prompt */}
-      <ToolbarButton
+      {linkDialogOpen && (
+        <LinkDialog
+          onConfirm={(url) => {
+            usableEditor?.chain().focus().setLink({ href: url }).run();
+            setLinkDialogOpen(false);
+          }}
+          onClose={() => setLinkDialogOpen(false)}
+        />
+      )}
+      {/* Image button — label wraps the input so WebKit on macOS treats the
+          click as a direct user gesture (programmatic .click() is blocked there) */}
+      <label
         title="Insert image from file"
-        disabled={!usableEditor}
-        onClick={() => imageFileRef.current?.click()}
+        className={cn(
+          "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 transition-colors",
+          usableEditor
+            ? "cursor-pointer hover:bg-slate-100 hover:text-slate-800"
+            : "cursor-not-allowed opacity-40",
+        )}
       >
         <ImageIcon size={15} />
-      </ToolbarButton>
-      <input
-        ref={imageFileRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleImageFileChange}
-      />
+        <input
+          type="file"
+          accept="image/*"
+          disabled={!usableEditor}
+          className="sr-only"
+          onChange={handleImageFileChange}
+        />
+      </label>
       <Separator />
       <ToolbarButton
         title="Undo (Cmd+Z)"

@@ -11,7 +11,7 @@ export function clampAiPanelWidth(
 ): number {
   const maxFromContainer =
     containerWidth != null && containerWidth > 0
-      ? Math.min(AI_PANEL_MAX_WIDTH, containerWidth * AI_PANEL_MAX_WIDTH_RATIO)
+      ? containerWidth * AI_PANEL_MAX_WIDTH_RATIO
       : AI_PANEL_MAX_WIDTH;
   const maxWidth = Math.max(AI_PANEL_MIN_WIDTH, maxFromContainer);
   return Math.min(maxWidth, Math.max(AI_PANEL_MIN_WIDTH, width));
@@ -36,9 +36,10 @@ export function useResizablePanel({
 
   const getMaxWidth = useCallback(() => {
     const containerWidth = containerRef.current?.clientWidth ?? 0;
-    const maxFromRatio =
-      containerWidth > 0 ? containerWidth * maxWidthRatio : AI_PANEL_MAX_WIDTH;
-    return Math.max(minWidth, Math.min(AI_PANEL_MAX_WIDTH, maxFromRatio));
+    if (containerWidth > 0) {
+      return Math.max(minWidth, containerWidth * maxWidthRatio);
+    }
+    return Math.max(minWidth, AI_PANEL_MAX_WIDTH);
   }, [minWidth, maxWidthRatio]);
 
   const clampWidth = useCallback(
