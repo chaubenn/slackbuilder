@@ -6,6 +6,10 @@ import slackbuilderMark from "../assets/slackbuilder-mark.png";
 const IS_TAURI =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
+const IS_MACOS =
+  typeof navigator !== "undefined" &&
+  /Mac|iPhone|iPad/i.test(navigator.platform);
+
 async function getAppWindow() {
   if (!IS_TAURI) return null;
   try {
@@ -16,34 +20,62 @@ async function getAppWindow() {
   }
 }
 
+async function isWindowZoomed(
+  win: Awaited<ReturnType<typeof getAppWindow>>,
+): Promise<boolean> {
+  if (!win) return false;
+  return IS_MACOS ? win.isFullscreen() : win.isMaximized();
+}
+
+async function toggleWindowZoom(
+  win: Awaited<ReturnType<typeof getAppWindow>>,
+): Promise<void> {
+  if (!win) return;
+  if (IS_MACOS) {
+    await win.setFullscreen(!(await win.isFullscreen()));
+  } else {
+    await win.toggleMaximize();
+  }
+}
+
 interface TitleBarProps {
   /** Transient status message shown instead of the subtitle (copy success, errors, …) */
   status?: string | null;
 }
 
 export function TitleBar({ status }: TitleBarProps) {
-  const [maximized, setMaximized] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
 
-  // Track maximize state via DOM resize events so we swap the icon correctly.
+  // Track zoom/fullscreen state so we swap the icon correctly.
   useEffect(() => {
     let mounted = true;
-    let detach: (() => void) | undefined;
+    let detachResize: (() => void) | undefined;
+    let unlistenResized: (() => void) | undefined;
 
     getAppWindow().then(async (win) => {
       if (!win || !mounted) return;
 
       const check = async () => {
-        if (mounted) setMaximized(await win.isMaximized());
+        if (mounted) setZoomed(await isWindowZoomed(win));
       };
 
       await check();
       window.addEventListener("resize", check);
-      detach = () => window.removeEventListener("resize", check);
+      detachResize = () => window.removeEventListener("resize", check);
+
+      try {
+        unlistenResized = await win.onResized(() => {
+          void check();
+        });
+      } catch {
+        // onResized unavailable outside Tauri — resize listener is enough
+      }
     });
 
     return () => {
       mounted = false;
-      detach?.();
+      detachResize?.();
+      unlistenResized?.();
     };
   }, []);
 
@@ -51,13 +83,24 @@ export function TitleBar({ status }: TitleBarProps) {
     (await getAppWindow())?.minimize();
   }, []);
 
-  const toggleMaximize = useCallback(async () => {
-    (await getAppWindow())?.toggleMaximize();
+  const toggleZoom = useCallback(async () => {
+    const win = await getAppWindow();
+    await toggleWindowZoom(win);
   }, []);
 
   const close = useCallback(async () => {
     (await getAppWindow())?.close();
   }, []);
+
+  const zoomAriaLabel = IS_MACOS
+    ? zoomed
+      ? "Exit fullscreen"
+      : "Enter fullscreen"
+    : zoomed
+      ? "Restore"
+      : "Maximize";
+
+  const minimizeDisabled = IS_MACOS && zoomed;
 
   return (
     <div className="titlebar flex h-[30px] shrink-0 items-stretch border-b border-slate-200 bg-white">
@@ -68,7 +111,7 @@ export function TitleBar({ status }: TitleBarProps) {
        */}
       <div
         data-tauri-drag-region
-        onDoubleClick={IS_TAURI ? toggleMaximize : undefined}
+        onDoubleClick={IS_TAURI ? toggleZoom : undefined}
         className="flex flex-1 items-center gap-1.5 overflow-hidden px-3"
       >
         {/* Logo mark */}
@@ -105,19 +148,28 @@ export function TitleBar({ status }: TitleBarProps) {
           <button
             type="button"
             onClick={minimize}
-            aria-label="Minimize"
-            className="flex w-[46px] items-center justify-center text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            disabled={minimizeDisabled}
+            aria-disabled={minimizeDisabled}
+            aria-label={
+              minimizeDisabled
+                ? "Minimize unavailable in fullscreen"
+                : "Minimize"
+            }
+            title={
+              minimizeDisabled ? "Exit fullscreen to minimize" : undefined
+            }
+            className="flex w-[46px] items-center justify-center text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-slate-400 dark:disabled:hover:bg-transparent dark:disabled:hover:text-slate-500"
           >
             <Minus size={11} strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
-            onClick={toggleMaximize}
-            aria-label={maximized ? "Restore" : "Maximize"}
+            onClick={toggleZoom}
+            aria-label={zoomAriaLabel}
             className="flex w-[46px] items-center justify-center text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
           >
-            {maximized ? (
+            {zoomed ? (
               <Minimize2 size={10} strokeWidth={1.5} />
             ) : (
               <Maximize2 size={10} strokeWidth={1.5} />
