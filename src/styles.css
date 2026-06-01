@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Match app theme toggle (html.dark) — not prefers-color-scheme alone. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-slack-bg: #ffffff;
   --color-slack-bg-dark: #1a1d21;

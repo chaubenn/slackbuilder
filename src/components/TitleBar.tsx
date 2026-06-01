@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Minus, Maximize2, Minimize2, X } from "lucide-react";
 import slackbuilderMark from "../assets/slackbuilder-mark.png";
+import { APP_VERSION_LABEL } from "../version";
 
 // Detect Tauri environment at module init — safe to read synchronously.
 const IS_TAURI =
@@ -126,6 +127,10 @@ export function TitleBar({ status }: TitleBarProps) {
         <span className="text-[12px] leading-none tracking-tight text-slate-800 pointer-events-none select-none">
           <span className="font-bold">slack</span>
           <span className="font-normal">builder</span>
+        </span>
+
+        <span className="app-version-tag ml-1.5 text-[10px] font-normal tabular-nums text-slate-500 dark:text-slate-300 pointer-events-none select-none">
+          {APP_VERSION_LABEL}
         </span>
 
         {/* Divider */}

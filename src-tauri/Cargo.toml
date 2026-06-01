@@ -1,6 +1,6 @@
 [package]
 name = "slackbuilder"
-version = "0.1.0"
+version = "1.0.1"
 description = "Slackbuilder: AI-powered Slack message composer"
 authors = ["Slackbuilder"]
 edition = "2021"
