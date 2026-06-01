@@ -20,14 +20,19 @@ const IS_TAURI = typeof window !== "undefined" && "__TAURI_INTERNALS__" in windo
 async function openUrl(url: string) {
   if (IS_TAURI) {
     try {
-      const { open } = await import("@tauri-apps/plugin-opener");
-      await open(url);
+      const { openUrl: openExternal } = await import("@tauri-apps/plugin-opener");
+      await openExternal(url);
       return;
     } catch {
-      // fall through
+      // fall through to web behavior
     }
   }
   window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function findEditorLink(target: EventTarget | null): HTMLAnchorElement | null {
+  if (!(target instanceof HTMLElement)) return null;
+  return target.closest("a[href]");
 }
 
 export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
@@ -52,7 +57,6 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
         autolink: true,
         HTMLAttributes: {
           rel: "noopener noreferrer",
-          target: "_blank",
         },
       }),
       Placeholder.configure({
@@ -68,23 +72,27 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
           "slack-message app-scrollbar prose-none focus:outline-none px-6 py-4 min-h-full",
       },
       handleDOMEvents: {
-        // mousedown fires before WebKit can intercept Cmd+click on <a> elements.
+        // Cmd/Ctrl+click opens the link. Handle it on mousedown because the
+        // WebKit/Tauri webview can act on the <a> before the click fires.
+        // A *plain* click must fall through untouched here: calling
+        // preventDefault on mousedown would cancel focus/selection and stop
+        // the caret from landing inside the link text.
         mousedown(_view, event) {
           if (!(event.ctrlKey || event.metaKey)) return false;
-          const anchor = (event.target as HTMLElement).closest("a[href]");
+          const anchor = findEditorLink(event.target);
           if (!anchor) return false;
           event.preventDefault();
           const href = anchor.getAttribute("href");
           if (href) void openUrl(href);
           return true;
         },
-        // Prevent the browser/webview from navigating on a plain click so the
-        // user can place their caret inside a hyperlink normally.
+        // Stop the webview from navigating on a plain click; the caret was
+        // already placed on mousedown, so we only suppress the default.
         click(_view, event) {
-          const anchor = (event.target as HTMLElement).closest("a[href]");
+          const anchor = findEditorLink(event.target);
           if (!anchor) return false;
           event.preventDefault();
-          return false; // let ProseMirror move the caret
+          return false;
         },
       },
       handlePaste(_view, event) {
