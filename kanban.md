@@ -10,13 +10,6 @@ Flow is someone fixes a ticket in Backlog -> Move ticket to QA -> Ping someone t
 - users should be able to use local models, ones that are free to use and run locally 
 - if they can't, allow them to do so
 
-### Feature - fullscreen for MacOS 
-- right now, users can fullscreen the app however it isn't a mac-native fullscreen, it just enlarges it on the users desktop
-
-### Bug - link button
-- link editor toolbar functionality is missing; make it work like in slack to make hyperlinks or add links
-
-
 ## QA 
 
 ## Done 
