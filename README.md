@@ -1,7 +1,8 @@
-# Slackbuilder
 <p align="center">
   <img src="docs/assets/logo_animated.webp" alt="Slackbuilder logo animation" width="75%" />
 </p>
+
+# Slackbuilder
 
 **An AI-powered WYSIWYG for Slack messages** — draft and refine in a Slack-faithful editor, then **Copy to Slack** so paste into the Slack desktop app keeps formatting exactly.
 
