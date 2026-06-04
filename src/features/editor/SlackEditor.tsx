@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { SlackImage } from "./extensions/SlackImage.tsx";
 import { SlackLinkUnfurl } from "./extensions/SlackLinkUnfurl";
+import { SlackFormattingShortcuts } from "./extensions/SlackFormattingShortcuts";
 
 interface SlackEditorProps {
   document: JSONContent;
@@ -64,6 +65,7 @@ export function SlackEditor({ document, onChange, onReady }: SlackEditorProps) {
       }),
       SlackImage,
       SlackLinkUnfurl,
+      SlackFormattingShortcuts,
     ],
     content: initialDocRef.current,
     editorProps: {

@@ -89,6 +89,13 @@ function App() {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.shiftKey && (e.key === "C" || e.key === "c")) {
+        const target = e.target;
+        if (
+          target instanceof HTMLElement &&
+          target.closest(".ProseMirror") !== null
+        ) {
+          return;
+        }
         e.preventDefault();
         handleCopy();
       }

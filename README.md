@@ -162,12 +162,15 @@ Per [Slack formatting docs](https://docs.slack.dev/messaging/formatting-message-
 
 | Shortcut         | Action                      |
 | ---------------- | --------------------------- |
-| Cmd/Ctrl+Shift+C | **Copy to Slack**           |
+| Cmd/Ctrl+Shift+C | **Copy to Slack** (outside the editor; in the editor this is **code snippet**, matching Slack) |
 | Cmd/Ctrl+T       | New tab (focuses AI prompt) |
 | Cmd/Ctrl+W       | Close current tab           |
 | Cmd/Ctrl+1–9     | Switch to tab N             |
+| Enter (tab)      | Rename focused tab          |
 | Enter            | Send AI message             |
 | Shift+Enter      | Newline in AI input           |
+
+Editor formatting shortcuts match [Slack’s message composer](https://slack.com/help/articles/201374536-Slack-keyboard-shortcuts) (bold, italic, strikethrough, code snippet, code block, lists, quote, link). Hover toolbar buttons for the full list.
 
 ## Contributors
 

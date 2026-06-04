@@ -282,9 +282,16 @@ export function EditorTabs() {
                 >
                   <button
                     type="button"
+                    tabIndex={0}
                     onClick={() => switchConversation(tab.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !isRenaming) {
+                        event.preventDefault();
+                        startRename(tab);
+                      }
+                    }}
                     className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-3 pr-1 text-left"
-                    title={tab.title}
+                    title={`${tab.title} — press Enter to rename`}
                   >
                     <span
                       className={cn(

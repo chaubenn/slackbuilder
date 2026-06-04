@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { type Editor } from "@tiptap/react";
 import {
   Bold,
   Italic,
   Strikethrough,
   Code,
-  Code2,
+  SquareCode,
   List,
   ListOrdered,
   Quote,
@@ -19,6 +19,12 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { HoverTooltip } from "../../components/HoverTooltip";
+import {
+  APP_SHORTCUTS,
+  OPEN_LINK_DIALOG_EVENT,
+  SLACK_FORMAT,
+} from "../../lib/slackFormatShortcuts";
 
 interface LinkDialogProps {
   initialUrl: string;
@@ -167,19 +173,24 @@ interface ButtonProps {
 
 function ToolbarButton({ active, disabled, onClick, title, children }: ButtonProps) {
   return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
-        active && "bg-slate-100 text-slate-900",
-        disabled && "opacity-40 cursor-not-allowed",
-      )}
-    >
-      {children}
-    </button>
+    <HoverTooltip label={title} placement="bottom">
+      <button
+        type="button"
+        aria-label={title}
+        aria-disabled={disabled || undefined}
+        onClick={() => {
+          if (disabled) return;
+          onClick();
+        }}
+        className={cn(
+          "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800",
+          active && "bg-slate-100 text-slate-900",
+          disabled && "opacity-40 cursor-not-allowed",
+        )}
+      >
+        {children}
+      </button>
+    </HoverTooltip>
   );
 }
 
@@ -196,6 +207,30 @@ export function EditorToolbar({
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
   const [, forceTick] = useState(0);
   const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const openLinkDialog = useCallback(() => {
+    if (!usableEditor) return;
+    if (usableEditor.isActive("link")) {
+      const href = (usableEditor.getAttributes("link").href as string) ?? "";
+      usableEditor.chain().extendMarkRange("link").run();
+      const { from, to } = usableEditor.state.selection;
+      const linkText = usableEditor.state.doc.textBetween(from, to, "");
+      setLinkDialog({
+        isEditing: true,
+        initialUrl: href,
+        initialText: linkText,
+        linkRange: { from, to },
+      });
+    } else {
+      setLinkDialog({
+        isEditing: false,
+        initialUrl: "",
+        initialText: "",
+        linkRange: null,
+      });
+    }
+  }, [usableEditor]);
 
   useEffect(() => {
     if (!usableEditor) return;
@@ -208,6 +243,32 @@ export function EditorToolbar({
       usableEditor.off("selectionUpdate", update);
       usableEditor.off("update", update);
     };
+  }, [usableEditor]);
+
+  useEffect(() => {
+    window.addEventListener(OPEN_LINK_DIALOG_EVENT, openLinkDialog);
+    return () =>
+      window.removeEventListener(OPEN_LINK_DIALOG_EVENT, openLinkDialog);
+  }, [openLinkDialog]);
+
+  useEffect(() => {
+    const onImageShortcut = (event: KeyboardEvent) => {
+      const mod = event.metaKey || event.ctrlKey;
+      if (!mod || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== "u") return;
+      if (!usableEditor) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select") !== null
+      ) {
+        return;
+      }
+      event.preventDefault();
+      imageInputRef.current?.click();
+    };
+    window.addEventListener("keydown", onImageShortcut);
+    return () => window.removeEventListener("keydown", onImageShortcut);
   }, [usableEditor]);
 
   const can = (() => {
@@ -233,7 +294,7 @@ export function EditorToolbar({
   return (
     <div className="flex items-center gap-0.5 border-b border-slate-200 bg-white px-2 py-1.5">
       <ToolbarButton
-        title="Bold (Cmd+B)"
+        title={SLACK_FORMAT.bold}
         active={usableEditor?.isActive("bold")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleBold().run()}
@@ -241,7 +302,7 @@ export function EditorToolbar({
         <Bold size={15} />
       </ToolbarButton>
       <ToolbarButton
-        title="Italic (Cmd+I)"
+        title={SLACK_FORMAT.italic}
         active={usableEditor?.isActive("italic")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleItalic().run()}
@@ -249,24 +310,33 @@ export function EditorToolbar({
         <Italic size={15} />
       </ToolbarButton>
       <ToolbarButton
-        title="Strikethrough"
+        title={SLACK_FORMAT.strikethrough}
         active={usableEditor?.isActive("strike")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleStrike().run()}
       >
         <Strikethrough size={15} />
       </ToolbarButton>
+      <Separator />
       <ToolbarButton
-        title="Inline code"
+        title={SLACK_FORMAT.codeSnippet}
         active={usableEditor?.isActive("code")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleCode().run()}
       >
         <Code size={15} />
       </ToolbarButton>
+      <ToolbarButton
+        title={SLACK_FORMAT.codeBlock}
+        active={usableEditor?.isActive("codeBlock")}
+        disabled={!usableEditor}
+        onClick={() => usableEditor?.chain().focus().toggleCodeBlock().run()}
+      >
+        <SquareCode size={15} />
+      </ToolbarButton>
       <Separator />
       <ToolbarButton
-        title="Bullet list"
+        title={SLACK_FORMAT.bulletList}
         active={usableEditor?.isActive("bulletList")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleBulletList().run()}
@@ -274,7 +344,7 @@ export function EditorToolbar({
         <List size={15} />
       </ToolbarButton>
       <ToolbarButton
-        title="Numbered list"
+        title={SLACK_FORMAT.numberedList}
         active={usableEditor?.isActive("orderedList")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleOrderedList().run()}
@@ -282,39 +352,19 @@ export function EditorToolbar({
         <ListOrdered size={15} />
       </ToolbarButton>
       <ToolbarButton
-        title="Block quote"
+        title={SLACK_FORMAT.blockQuote}
         active={usableEditor?.isActive("blockquote")}
         disabled={!usableEditor}
         onClick={() => usableEditor?.chain().focus().toggleBlockquote().run()}
       >
         <Quote size={15} />
       </ToolbarButton>
-      <ToolbarButton
-        title="Code block"
-        active={usableEditor?.isActive("codeBlock")}
-        disabled={!usableEditor}
-        onClick={() => usableEditor?.chain().focus().toggleCodeBlock().run()}
-      >
-        <Code2 size={15} />
-      </ToolbarButton>
       <Separator />
       <ToolbarButton
-        title="Add / edit link"
+        title={SLACK_FORMAT.link}
         disabled={!usableEditor}
         active={usableEditor?.isActive("link")}
-        onClick={() => {
-          if (!usableEditor) return;
-          if (usableEditor.isActive("link")) {
-            const href = (usableEditor.getAttributes("link").href as string) ?? "";
-            // Extend selection to the full link mark to capture display text and range
-            usableEditor.chain().extendMarkRange("link").run();
-            const { from, to } = usableEditor.state.selection;
-            const linkText = usableEditor.state.doc.textBetween(from, to, "");
-            setLinkDialog({ isEditing: true, initialUrl: href, initialText: linkText, linkRange: { from, to } });
-          } else {
-            setLinkDialog({ isEditing: false, initialUrl: "", initialText: "", linkRange: null });
-          }
-        }}
+        onClick={openLinkDialog}
       >
         <LinkIcon size={15} />
       </ToolbarButton>
@@ -350,70 +400,78 @@ export function EditorToolbar({
       )}
       {/* Image button — label wraps the input so WebKit on macOS treats the
           click as a direct user gesture (programmatic .click() is blocked there) */}
-      <label
-        title="Insert image from file"
-        className={cn(
-          "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 transition-colors",
-          usableEditor
-            ? "cursor-pointer hover:bg-slate-100 hover:text-slate-800"
-            : "cursor-not-allowed opacity-40",
-        )}
-      >
-        <ImageIcon size={15} />
-        <input
-          type="file"
-          accept="image/*"
-          disabled={!usableEditor}
-          className="sr-only"
-          onChange={handleImageFileChange}
-        />
-      </label>
+      <HoverTooltip label={SLACK_FORMAT.insertImage} placement="bottom">
+        <label
+          aria-label={SLACK_FORMAT.insertImage}
+          className={cn(
+            "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 transition-colors",
+            usableEditor
+              ? "cursor-pointer hover:bg-slate-100 hover:text-slate-800"
+              : "cursor-not-allowed opacity-40",
+          )}
+        >
+          <ImageIcon size={15} />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            disabled={!usableEditor}
+            className="sr-only"
+            onChange={handleImageFileChange}
+          />
+        </label>
+      </HoverTooltip>
       <Separator />
       <ToolbarButton
-        title="Undo (Cmd+Z)"
+        title={SLACK_FORMAT.undo}
         disabled={!can?.undo()}
         onClick={() => usableEditor?.chain().focus().undo().run()}
       >
         <Undo2 size={15} />
       </ToolbarButton>
       <ToolbarButton
-        title="Redo (Cmd+Shift+Z)"
+        title={SLACK_FORMAT.redo}
         disabled={!can?.redo()}
         onClick={() => usableEditor?.chain().focus().redo().run()}
       >
         <Redo2 size={15} />
       </ToolbarButton>
       <div className="flex-1" />
-      <button
-        type="button"
-        onClick={onCopy}
-        disabled={isCopying}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition-all duration-200",
-          copyFeedback === "copied" &&
-            "bg-emerald-600 text-white hover:bg-emerald-600",
-          copyFeedback === "error" &&
-            "bg-red-600 text-white hover:bg-red-600",
-          copyFeedback === "idle" &&
-            "bg-slate-900 text-white hover:bg-slate-800",
-          isCopying && "cursor-wait opacity-70",
-        )}
-        title="Copy to Slack (Cmd+Shift+C)"
-        aria-live="polite"
-      >
-        {copyFeedback === "copied" ? (
-          <Check size={13} className="shrink-0" />
-        ) : (
-          <Copy size={13} className="shrink-0" />
-        )}
-        {isCopying
-          ? "Copying…"
-          : copyFeedback === "copied"
-            ? "Copied!"
-            : copyFeedback === "error"
-              ? "Copy failed"
-              : "Copy to Slack"}
-      </button>
+      <HoverTooltip label={APP_SHORTCUTS.copyToSlack} placement="bottom">
+        <button
+          type="button"
+          onClick={() => {
+            if (isCopying) return;
+            onCopy();
+          }}
+          aria-disabled={isCopying || undefined}
+          aria-label={APP_SHORTCUTS.copyToSlack}
+          aria-live="polite"
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition-all duration-200",
+            copyFeedback === "copied" &&
+              "bg-emerald-600 text-white hover:bg-emerald-600",
+            copyFeedback === "error" &&
+              "bg-red-600 text-white hover:bg-red-600",
+            copyFeedback === "idle" &&
+              "bg-slate-900 text-white hover:bg-slate-800",
+            isCopying && "cursor-wait opacity-70",
+          )}
+        >
+          {copyFeedback === "copied" ? (
+            <Check size={13} className="shrink-0" />
+          ) : (
+            <Copy size={13} className="shrink-0" />
+          )}
+          {isCopying
+            ? "Copying…"
+            : copyFeedback === "copied"
+              ? "Copied!"
+              : copyFeedback === "error"
+                ? "Copy failed"
+                : "Copy to Slack"}
+        </button>
+      </HoverTooltip>
     </div>
   );
 }

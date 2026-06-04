@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -46,6 +45,7 @@ import { PendingEditCard } from "./PendingEditCard";
 import { ChatMarkdown } from "./chatMarkdown";
 import { isApplyCommand } from "./applyCommand";
 import { cn } from "../../lib/utils";
+import { HoverTooltip } from "../../components/HoverTooltip";
 import {
   getModelCapabilities,
   providerSupportsWebSearch,
@@ -88,70 +88,6 @@ const VISION_TOOLTIP = "Vision-capable — can analyse images";
 const REASONING_TOOLTIP = "Reasoning — extended thinking capabilities";
 const WEB_SEARCH_TOOLTIP =
   "Web search — model can look up current information on the web";
-
-function HoverTooltip({
-  label,
-  placement = "top",
-  multiline = false,
-  className,
-  children,
-}: {
-  label: string;
-  placement?: "left" | "top";
-  multiline?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  const [tipPos, setTipPos] = useState<{ x: number; y: number } | null>(null);
-
-  const showTip = (el: HTMLElement) => {
-    const rect = el.getBoundingClientRect();
-    if (placement === "top") {
-      setTipPos({ x: rect.left + rect.width / 2, y: rect.top - 6 });
-      return;
-    }
-    setTipPos({ x: rect.left - 6, y: rect.top + rect.height / 2 });
-  };
-
-  return (
-    <>
-      <span
-        className={cn("relative inline-flex shrink-0", className)}
-        onPointerDown={(e) => e.stopPropagation()}
-        onMouseEnter={(e) => showTip(e.currentTarget)}
-        onMouseLeave={() => setTipPos(null)}
-        onFocus={(e) => showTip(e.currentTarget)}
-        onBlur={() => setTipPos(null)}
-      >
-        {children}
-      </span>
-      {tipPos &&
-        createPortal(
-          <div
-            style={{
-              position: "fixed",
-              left: tipPos.x,
-              top: tipPos.y,
-              transform:
-                placement === "top"
-                  ? "translate(-50%, -100%)"
-                  : "translate(-100%, -50%)",
-            }}
-            className={cn(
-              "pointer-events-none z-[1002] rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-normal leading-tight text-white shadow-md",
-              multiline
-                ? "max-w-[220px] whitespace-normal text-center"
-                : "whitespace-nowrap",
-            )}
-            role="tooltip"
-          >
-            {label}
-          </div>,
-          window.document.body,
-        )}
-    </>
-  );
-}
 
 function CapabilityIcon({
   icon: Icon,
