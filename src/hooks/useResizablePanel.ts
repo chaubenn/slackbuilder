@@ -4,6 +4,8 @@ export const AI_PANEL_DEFAULT_WIDTH = 380;
 export const AI_PANEL_MIN_WIDTH = 280;
 export const AI_PANEL_MAX_WIDTH = 720;
 export const AI_PANEL_MAX_WIDTH_RATIO = 0.65;
+export const EDITOR_MIN_WIDTH = 360;
+export const SPLIT_SEPARATOR_WIDTH = 4;
 
 export function clampAiPanelWidth(
   width: number,
@@ -13,7 +15,14 @@ export function clampAiPanelWidth(
     containerWidth != null && containerWidth > 0
       ? containerWidth * AI_PANEL_MAX_WIDTH_RATIO
       : AI_PANEL_MAX_WIDTH;
-  const maxWidth = Math.max(AI_PANEL_MIN_WIDTH, maxFromContainer);
+  const maxWithEditorFloor =
+    containerWidth != null && containerWidth > 0
+      ? containerWidth - EDITOR_MIN_WIDTH - SPLIT_SEPARATOR_WIDTH
+      : AI_PANEL_MAX_WIDTH;
+  const maxWidth = Math.max(
+    AI_PANEL_MIN_WIDTH,
+    Math.min(maxFromContainer, maxWithEditorFloor),
+  );
   return Math.min(maxWidth, Math.max(AI_PANEL_MIN_WIDTH, width));
 }
 
@@ -37,7 +46,10 @@ export function useResizablePanel({
   const getMaxWidth = useCallback(() => {
     const containerWidth = containerRef.current?.clientWidth ?? 0;
     if (containerWidth > 0) {
-      return Math.max(minWidth, containerWidth * maxWidthRatio);
+      const maxFromRatio = containerWidth * maxWidthRatio;
+      const maxWithEditorFloor =
+        containerWidth - EDITOR_MIN_WIDTH - SPLIT_SEPARATOR_WIDTH;
+      return Math.max(minWidth, Math.min(maxFromRatio, maxWithEditorFloor));
     }
     return Math.max(minWidth, AI_PANEL_MAX_WIDTH);
   }, [minWidth, maxWidthRatio]);

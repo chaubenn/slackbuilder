@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { HoverTooltip } from "../../components/HoverTooltip";
+import { shouldCompactCopyButton } from "./copyButtonLayout";
 import {
   APP_SHORTCUTS,
   OPEN_LINK_DIALOG_EVENT,
@@ -207,7 +208,10 @@ export function EditorToolbar({
   const usableEditor = editor && !editor.isDestroyed ? editor : null;
   const [, forceTick] = useState(0);
   const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
+  const [compactCopyButton, setCompactCopyButton] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
 
   const openLinkDialog = useCallback(() => {
     if (!usableEditor) return;
@@ -244,6 +248,24 @@ export function EditorToolbar({
       usableEditor.off("update", update);
     };
   }, [usableEditor]);
+
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    const tools = toolsRef.current;
+    if (!toolbar || !tools) return;
+
+    const sync = () => {
+      setCompactCopyButton(
+        shouldCompactCopyButton(toolbar.clientWidth, tools.scrollWidth),
+      );
+    };
+
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(toolbar);
+    ro.observe(tools);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     window.addEventListener(OPEN_LINK_DIALOG_EVENT, openLinkDialog);
@@ -292,7 +314,11 @@ export function EditorToolbar({
   };
 
   return (
-    <div className="flex items-center gap-0.5 border-b border-slate-200 bg-white px-2 py-1.5">
+    <div
+      ref={toolbarRef}
+      className="flex min-w-0 items-center gap-0.5 overflow-hidden border-b border-slate-200 bg-white px-2 py-1.5"
+    >
+      <div ref={toolsRef} className="flex shrink-0 items-center gap-0.5">
       <ToolbarButton
         title={SLACK_FORMAT.bold}
         active={usableEditor?.isActive("bold")}
@@ -436,6 +462,7 @@ export function EditorToolbar({
       >
         <Redo2 size={15} />
       </ToolbarButton>
+      </div>
       <div className="flex-1" />
       <HoverTooltip label={APP_SHORTCUTS.copyToSlack} placement="bottom">
         <button
@@ -448,7 +475,8 @@ export function EditorToolbar({
           aria-label={APP_SHORTCUTS.copyToSlack}
           aria-live="polite"
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium shadow-sm transition-all duration-200",
+            "inline-flex shrink-0 items-center rounded-lg text-xs font-medium shadow-sm transition-all duration-200",
+            compactCopyButton ? "h-7 w-7 justify-center p-0" : "gap-1.5 px-3 py-1.5",
             copyFeedback === "copied" &&
               "bg-emerald-600 text-white hover:bg-emerald-600",
             copyFeedback === "error" &&
@@ -463,13 +491,14 @@ export function EditorToolbar({
           ) : (
             <Copy size={13} className="shrink-0" />
           )}
-          {isCopying
-            ? "Copying…"
-            : copyFeedback === "copied"
-              ? "Copied!"
-              : copyFeedback === "error"
-                ? "Copy failed"
-                : "Copy to Slack"}
+          {!compactCopyButton &&
+            (isCopying
+              ? "Copying…"
+              : copyFeedback === "copied"
+                ? "Copied!"
+                : copyFeedback === "error"
+                  ? "Copy failed"
+                  : "Copy to Slack")}
         </button>
       </HoverTooltip>
     </div>
