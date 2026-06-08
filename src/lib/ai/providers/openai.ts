@@ -5,7 +5,8 @@ import type {
   ContentPart,
   StreamOpts,
 } from "../types";
-import { PROVIDERS } from "../types";
+import { formatProviderHttpError } from "../formatApiError";
+import { getActiveApiKey, PROVIDERS } from "../types";
 import {
   ANTHROPIC_WEB_SEARCH_TOOL,
   extractOpenAIResponsesDelta,
@@ -126,7 +127,9 @@ async function streamOpenAIResponses(
 
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
-    throw new Error(`OpenAI error ${res.status}: ${text || res.statusText}`);
+    throw new Error(
+      formatProviderHttpError("OpenAI", res.status, text || res.statusText),
+    );
   }
 
   return readSseStream(res.body, opts.onToken, extractOpenAIResponsesDelta);
@@ -193,7 +196,9 @@ export function createOpenAIProvider(settings: AiProviderSettings): AiProvider {
 
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
-        throw new Error(`OpenAI error ${res.status}: ${text || res.statusText}`);
+        throw new Error(
+          formatProviderHttpError("OpenAI", res.status, text || res.statusText),
+        );
       }
 
       return readSseStream(res.body, opts.onToken, (line) => {
@@ -259,7 +264,11 @@ export function createOpenRouterProvider(
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          `OpenRouter error ${res.status}: ${text || res.statusText}`,
+          formatProviderHttpError(
+            "OpenRouter",
+            res.status,
+            text || res.statusText,
+          ),
         );
       }
 
@@ -324,7 +333,11 @@ export function createAnthropicProvider(
       if (!res.ok || !res.body) {
         const text = await res.text().catch(() => "");
         throw new Error(
-          `Anthropic error ${res.status}: ${text || res.statusText}`,
+          formatProviderHttpError(
+            "Anthropic",
+            res.status,
+            text || res.statusText,
+          ),
         );
       }
 
@@ -383,15 +396,16 @@ async function readSseStream(
 }
 
 export function buildProvider(settings: AiProviderSettings): AiProvider {
+  const withKey = { ...settings, apiKey: getActiveApiKey(settings) };
   switch (settings.provider) {
     case "openai":
-      return createOpenAIProvider(settings);
+      return createOpenAIProvider(withKey);
     case "anthropic":
-      return createAnthropicProvider(settings);
+      return createAnthropicProvider(withKey);
     case "openrouter":
-      return createOpenRouterProvider(settings);
+      return createOpenRouterProvider(withKey);
     default:
-      return createOpenAIProvider(settings);
+      return createOpenAIProvider(withKey);
   }
 }
 

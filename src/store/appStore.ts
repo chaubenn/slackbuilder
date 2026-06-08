@@ -10,7 +10,11 @@ import type {
   AiProviderSettings,
   ChatMessage,
 } from "../lib/ai/types";
-import { PROVIDERS } from "../lib/ai/types";
+import {
+  getApiKeys,
+  normalizeAiSettings,
+  PROVIDERS,
+} from "../lib/ai/types";
 import { AI_PANEL_DEFAULT_WIDTH } from "../hooks/useResizablePanel";
 import {
   abortAllStreams,
@@ -460,26 +464,49 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   setSettings: (s) =>
-    set((state) => ({
-      settings: { ...state.settings, ...s },
-    })),
+    set((state) => {
+      const keys = getApiKeys(state.settings);
+      keys[state.settings.provider] = state.settings.apiKey;
+
+      const merged = { ...state.settings, ...s };
+      if (s.apiKey !== undefined) {
+        keys[merged.provider] = s.apiKey;
+      }
+
+      const nextApiKey =
+        s.apiKey !== undefined ? s.apiKey : (keys[merged.provider] ?? "");
+
+      return {
+        settings: normalizeAiSettings({
+          ...merged,
+          apiKeys: keys,
+          apiKey: nextApiKey,
+        }),
+      };
+    }),
 
   setProvider: (p) => {
     const defaults = PROVIDERS[p];
-    set((state) => ({
-      settings: {
-        ...state.settings,
-        provider: p,
-        model:
-          state.settings.provider === p
-            ? state.settings.model
-            : defaults.defaultModel,
-        baseUrl:
-          state.settings.provider === p
-            ? state.settings.baseUrl
-            : defaults.defaultBaseUrl,
-      },
-    }));
+    set((state) => {
+      const keys = getApiKeys(state.settings);
+      keys[state.settings.provider] = state.settings.apiKey;
+      return {
+        settings: normalizeAiSettings({
+          ...state.settings,
+          provider: p,
+          apiKeys: keys,
+          apiKey: keys[p],
+          model:
+            state.settings.provider === p
+              ? state.settings.model
+              : defaults.defaultModel,
+          baseUrl:
+            state.settings.provider === p
+              ? state.settings.baseUrl
+              : defaults.defaultBaseUrl,
+        }),
+      };
+    });
   },
 
   addChatMessages: (messages) =>
@@ -971,7 +998,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       return {
         ...state,
-        settings: { ...DEFAULT_SETTINGS, ...(snapshot.settings ?? {}) },
+        settings: normalizeAiSettings({
+          ...DEFAULT_SETTINGS,
+          ...(snapshot.settings ?? {}),
+        }),
         ui: snapshot.ui ?? state.ui,
         projects,
         activeProjectId: activeProject?.id ?? projects[0].id,

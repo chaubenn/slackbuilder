@@ -35,6 +35,7 @@ import {
   getSystemPrompt,
   buildContextMessage,
 } from "../../lib/ai/systemPrompt";
+import { formatChatError } from "../../lib/ai/formatApiError";
 import { parseAiResponse, parseAskResponse } from "../../lib/ai/parseEditResponse";
 import { normalizeEditPositions } from "../../lib/ai/editPosition";
 import { shouldUseOptionalFullRewrite } from "../../lib/ai/applyEditsHelpers";
@@ -47,6 +48,9 @@ import { isApplyCommand } from "./applyCommand";
 import { cn } from "../../lib/utils";
 import { HoverTooltip } from "../../components/HoverTooltip";
 import {
+  getActiveApiKey,
+  getApiKeys,
+  getConfiguredProviders,
   getModelCapabilities,
   providerSupportsWebSearch,
   PROVIDERS,
@@ -122,6 +126,7 @@ function CapabilityIcon({
 interface ModelSelectorProps {
   model: string;
   provider: AiProviderId;
+  configuredProviders: AiProviderId[];
   onSelect: (provider: AiProviderId, model: string) => void;
   onOpenSettings: () => void;
 }
@@ -129,6 +134,7 @@ interface ModelSelectorProps {
 function ModelSelector({
   model,
   provider,
+  configuredProviders,
   onSelect,
   onOpenSettings,
 }: ModelSelectorProps) {
@@ -140,17 +146,19 @@ function ModelSelector({
   );
   const caps = getModelCapabilities(model);
   const shortName = model.split("/").pop() ?? model;
+  const activeProvider = configuredProviders.includes(provider)
+    ? provider
+    : (configuredProviders[0] ?? provider);
 
-  // Build a flat grouped list of every preset model across providers so the
-  // user can switch provider+model in one click without going to Settings.
+  // Only show models for providers that have an API key configured.
   const grouped = useMemo(
     () =>
-      (Object.keys(PROVIDERS) as AiProviderId[]).map((pid) => ({
+      configuredProviders.map((pid) => ({
         provider: pid,
         label: PROVIDERS[pid].label,
         presets: PROVIDER_MODEL_PRESETS[pid] ?? [],
       })),
-    [],
+    [configuredProviders],
   );
 
   // Position the portal popover above the trigger button. We re-measure on
@@ -190,7 +198,7 @@ function ModelSelector({
     return () => window.removeEventListener("mousedown", close);
   }, [open]);
 
-  const modelTooltip = `${PROVIDERS[provider].label} · ${model}`;
+  const modelTooltip = `${PROVIDERS[activeProvider].label} · ${model}`;
 
   return (
     <>
@@ -252,7 +260,7 @@ function ModelSelector({
                 {group.presets.map((preset) => {
                   const pc = getModelCapabilities(preset.id);
                   const isActive =
-                    preset.id === model && group.provider === provider;
+                    preset.id === model && group.provider === activeProvider;
                   return (
                     <button
                       key={`${group.provider}:${preset.id}`}
@@ -417,6 +425,11 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   const webSearchOn = Boolean(settings.webSearchEnabled);
   const chatMode = settings.chatMode ?? "edit";
   const isAskMode = chatMode === "ask";
+  const activeApiKey = getActiveApiKey(settings);
+  const configuredProviders = useMemo(
+    () => getConfiguredProviders(settings),
+    [settings.provider, settings.apiKey, settings.apiKeys],
+  );
 
   // Image paste handler (textarea)
   const handlePaste = useCallback(
@@ -466,10 +479,12 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     nextProvider: AiProviderId,
     nextModel: string,
   ) => {
+    const keys = getApiKeys(settings);
     const patch: Partial<AiProviderSettings> = { model: nextModel };
     if (nextProvider !== settings.provider) {
       patch.provider = nextProvider;
       patch.baseUrl = PROVIDERS[nextProvider].defaultBaseUrl;
+      patch.apiKey = keys[nextProvider];
     }
     setSettings(patch);
   };
@@ -486,14 +501,14 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
     !isStreaming &&
     !visionBlocked &&
     (inputText.length > 0 || attachedImages.length > 0) &&
-    (Boolean(settings.apiKey) || canApplyPending);
+    (Boolean(activeApiKey) || canApplyPending);
 
   const sendTooltip = useMemo(() => {
     if (canSend) return "Send message (Enter)";
     if (visionBlocked) {
       return "Remove images or switch to a vision-capable model";
     }
-    if (!settings.apiKey && !canApplyPending) {
+    if (!activeApiKey && !canApplyPending) {
       return "Add an API key in Settings to send";
     }
     if (inputText.length === 0 && attachedImages.length === 0) {
@@ -503,7 +518,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
   }, [
     canSend,
     visionBlocked,
-    settings.apiKey,
+    activeApiKey,
     canApplyPending,
     inputText.length,
     attachedImages.length,
@@ -656,7 +671,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
         setTimeout(() => textareaRef.current?.focus(), 0);
       } else {
         finishStream(projectId, conversationId, {
-          assistantMessage: `Error: ${(err as Error).message}`,
+          assistantMessage: formatChatError(err),
           edits: [],
         });
       }
@@ -746,7 +761,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
                 </li>
               ))}
             </ul>
-            {!settings.apiKey && (
+            {!activeApiKey && (
               <p className="mt-3 rounded-lg bg-amber-50 p-2.5 text-amber-800">
                 Add an API key in{" "}
                 <button
@@ -961,6 +976,7 @@ export function AiChatPanel({ onOpenSettings }: AiChatPanelProps) {
               <ModelSelector
                 model={settings.model}
                 provider={settings.provider}
+                configuredProviders={configuredProviders}
                 onSelect={handleSelectModel}
                 onOpenSettings={onOpenSettings}
               />

@@ -29,7 +29,10 @@ export type ChatMode = "edit" | "ask";
 
 export interface AiProviderSettings {
   provider: AiProviderId;
+  /** API key for the active provider (kept in sync with apiKeys[provider]). */
   apiKey: string;
+  /** Per-provider API keys so each provider can be configured independently. */
+  apiKeys?: Partial<Record<AiProviderId, string>>;
   model: string;
   baseUrl?: string;
   theme?: "light" | "dark";
@@ -77,6 +80,58 @@ export const PROVIDERS: Record<
     defaultBaseUrl: "https://openrouter.ai/api/v1",
   },
 };
+
+const ALL_PROVIDER_IDS = Object.keys(PROVIDERS) as AiProviderId[];
+
+/** Merge legacy single apiKey with per-provider apiKeys. */
+export function getApiKeys(
+  settings: Pick<AiProviderSettings, "provider" | "apiKey" | "apiKeys">,
+): Record<AiProviderId, string> {
+  const keys = Object.fromEntries(
+    ALL_PROVIDER_IDS.map((id) => [id, settings.apiKeys?.[id]?.trim() ?? ""]),
+  ) as Record<AiProviderId, string>;
+
+  const legacy = settings.apiKey?.trim() ?? "";
+  if (legacy && !keys[settings.provider]) {
+    keys[settings.provider] = legacy;
+  }
+
+  return keys;
+}
+
+export function getActiveApiKey(settings: AiProviderSettings): string {
+  return getApiKeys(settings)[settings.provider] ?? "";
+}
+
+/** Providers that have a non-empty API key configured. */
+export function getConfiguredProviders(
+  settings: Pick<AiProviderSettings, "provider" | "apiKey" | "apiKeys">,
+): AiProviderId[] {
+  const keys = getApiKeys(settings);
+  return ALL_PROVIDER_IDS.filter((id) => keys[id].length > 0);
+}
+
+export function normalizeAiSettings(
+  settings: Partial<AiProviderSettings>,
+): AiProviderSettings {
+  const provider = settings.provider ?? "openai";
+  const merged: AiProviderSettings = {
+    provider,
+    apiKey: settings.apiKey ?? "",
+    apiKeys: settings.apiKeys,
+    model: settings.model ?? PROVIDERS[provider].defaultModel,
+    baseUrl: settings.baseUrl ?? PROVIDERS[provider].defaultBaseUrl,
+    theme: settings.theme ?? "light",
+    webSearchEnabled: settings.webSearchEnabled ?? false,
+    chatMode: settings.chatMode ?? "edit",
+  };
+  const keys = getApiKeys(merged);
+  return {
+    ...merged,
+    apiKeys: keys,
+    apiKey: keys[provider],
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Model capability definitions

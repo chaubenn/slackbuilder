@@ -1,6 +1,52 @@
 import { describe, expect, it } from "vitest";
-import { getModelCapabilities, providerSupportsWebSearch } from "./types";
+import {
+  getApiKeys,
+  getConfiguredProviders,
+  getModelCapabilities,
+  providerSupportsWebSearch,
+} from "./types";
 import { toOpenAIResponsesPayload } from "./providers/webSearchHelpers";
+
+describe("getApiKeys", () => {
+  it("reads per-provider keys and falls back to legacy apiKey", () => {
+    expect(
+      getApiKeys({
+        provider: "openai",
+        apiKey: "sk-openai",
+        apiKeys: { anthropic: "sk-claude" },
+      }),
+    ).toEqual({
+      openai: "sk-openai",
+      anthropic: "sk-claude",
+      openrouter: "",
+    });
+  });
+});
+
+describe("getConfiguredProviders", () => {
+  it("returns only providers with a non-empty key", () => {
+    expect(
+      getConfiguredProviders({
+        provider: "openai",
+        apiKey: "",
+        apiKeys: {
+          openai: "sk-openai",
+          openrouter: "sk-or",
+        },
+      }),
+    ).toEqual(["openai", "openrouter"]);
+  });
+
+  it("includes legacy apiKey for the active provider", () => {
+    expect(
+      getConfiguredProviders({
+        provider: "anthropic",
+        apiKey: "sk-claude",
+        apiKeys: {},
+      }),
+    ).toEqual(["anthropic"]);
+  });
+});
 
 describe("getModelCapabilities", () => {
   it("marks known models with web search support", () => {
